@@ -30,16 +30,19 @@ try
     runner.addPlugin(TAPPlugin.producingOriginalFormat(ToFile(tapFile)));
     
     % Add Cobertura
-    coverageFile = fullfile(getenv('WORKSPACE'), 'coverage.xml');
+
     
     % need to add each tracked folder separately, apparently
     fprintf('\nRunAllTests.m: Adding folders to cover:\n')
-    sep = strfind(p,pathsep); idx = 1; % idx tracks position in path string
+    sep = strfind(p,pathsep); idx = 1; % idx "cursor" tracks position in path string
     for iF = 1:length(sep)
-        this_folder = p(idx:sep(iF)-1);
+        this_folder = p(idx:sep(iF) - 1);
         disp(this_folder);
+        
+        coverageFile = fullfile(getenv('WORKSPACE'), sprintf('coverage%d.xml',iF));
         runner.addPlugin(CodeCoveragePlugin.forFolder(this_folder,'Producing', CoberturaFormat(coverageFile)));
-        idx = sep(iF)+1;
+        
+        idx = sep(iF)+1; % update cursor to start of next path
     end
 
     % Run the tests
