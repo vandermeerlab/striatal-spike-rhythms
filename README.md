@@ -5,3 +5,5 @@
 [![codecov](https://codecov.io/gh/vandermeerlab/striatal-spike-rhythms/branch/master/graph/badge.svg)](https://codecov.io/gh/vandermeerlab/striatal-spike-rhythms)
 
 Code to explore spike train rhythmicity in striatal data.
+
+Currently trying to understand why Codecov wants to talk to GitHub as /emirvine/. Something related to the organization?
