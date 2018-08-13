@@ -4,4 +4,4 @@
 
 [![codecov](https://codecov.io/gh/vandermeerlab/striatal-spike-rhythms/branch/master/graph/badge.svg)](https://codecov.io/gh/vandermeerlab/striatal-spike-rhythms)
 
-Code to explore spike train rhythmicity in striatal data
+Code to explore spike train rhythmicity in striatal data.
