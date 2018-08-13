@@ -29,6 +29,6 @@ try
     display(results);
 catch e
     disp(getReport(e,'extended'));
-    %exit(1);
+    exit(1);
 end
-%exit;
+exit;
