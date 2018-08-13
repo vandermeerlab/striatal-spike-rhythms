@@ -25,9 +25,11 @@ try
     coverageFile = fullfile(getenv('WORKSPACE'), 'coverage.xml');
     
     % need to add each tracked folder separately, apparently
+    fprintf('\nRunAllTests.m: Adding folders to cover:\n')
     sep = strfind(p,';'); idx = 1; % idx tracks position in path string
     for iF = 1:length(sep)
         this_folder = p(idx:sep(iF)-1);
+        disp(this_folder);
         runner.addPlugin(CodeCoveragePlugin.forFolder(this_folder,'Producing', CoberturaFormat(coverageFile)));
         idx = sep(iF)+1;
     end
@@ -36,6 +38,7 @@ try
     results = runner.run(suite);
     display(results);
 catch e
+    fprintf('\n*********************\nRunAllTests.m failed!\n*********************\n');
     disp(getReport(e,'extended'));
     exit(1);
 end
