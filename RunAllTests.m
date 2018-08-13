@@ -5,6 +5,14 @@ import matlab.unittest.plugins.ToFile;
 import('matlab.unittest.plugins.CodeCoveragePlugin');
 import('matlab.unittest.plugins.codecoverage.CoberturaFormat');
 
+if ispc
+    pathsep = ';';
+elseif isunix
+    pathsep = ':';
+else
+   error ('Undefined path separator.');
+end
+
 try
     % set up paths
     ws = getenv('WORKSPACE');
@@ -26,7 +34,7 @@ try
     
     % need to add each tracked folder separately, apparently
     fprintf('\nRunAllTests.m: Adding folders to cover:\n')
-    sep = strfind(p,';'); idx = 1; % idx tracks position in path string
+    sep = strfind(p,pathsep); idx = 1; % idx tracks position in path string
     for iF = 1:length(sep)
         this_folder = p(idx:sep(iF)-1);
         disp(this_folder);
