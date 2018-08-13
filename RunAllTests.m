@@ -9,7 +9,7 @@ try
     % set up paths
     ws = getenv('WORKSPACE');
     src = fullfile(ws, 'shared');
-    addpath(src);
+    addpath(genpath(src));
     
     tests = fullfile(ws, 'tests');
     suite = testsuite(tests);
