@@ -9,7 +9,8 @@ try
     % set up paths
     ws = getenv('WORKSPACE');
     src = fullfile(ws, 'shared');
-    addpath(genpath(src));
+    p = genpath(src);
+    addpath(p); % this returns a single string with ; as separator between folders
     
     tests = fullfile(ws, 'tests');
     suite = testsuite(tests);
@@ -22,8 +23,15 @@ try
     
     % Add Cobertura
     coverageFile = fullfile(getenv('WORKSPACE'), 'coverage.xml');
-    runner.addPlugin(CodeCoveragePlugin.forFolder(src,'Producing', CoberturaFormat(coverageFile)));
     
+    % need to add each tracked folder separately, apparently
+    sep = strfind(p,';'); idx = 1; % idx tracks position in path string
+    for iF = 1:length(sep)
+        this_folder = p(idx:sep(iF)-1);
+        runner.addPlugin(CodeCoveragePlugin.forFolder(this_folder,'Producing', CoberturaFormat(coverageFile)));
+        idx = sep(iF)+1;
+    end
+
     % Run the tests
     results = runner.run(suite);
     display(results);
