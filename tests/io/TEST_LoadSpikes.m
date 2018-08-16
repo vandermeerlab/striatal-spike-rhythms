@@ -20,7 +20,13 @@ end
 
 function setupOnce(testCase)
 testCase.TestData.origPath = pwd;
+
+fprintf('TEST_LoadSpikes is called from %s.\n',pwd);
+
 ws = getenv('WORKSPACE');
+
+fprintf('getenv workspace is %s.\n',ws);
+
 testFolder1 = fullfile(ws,'testdata','R050-2014-04-02');
 cd(testFolder1)
 end
