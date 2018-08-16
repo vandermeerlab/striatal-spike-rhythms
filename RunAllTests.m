@@ -21,7 +21,7 @@ try
     addpath(p); % this returns a single string with ; as separator between folders
     
     tests = fullfile(ws, 'tests');
-    suite = testsuite(tests);
+    suite = testsuite(tests, 'IncludeSubfolders', true);
     
     runner = TestRunner.withTextOutput();
     
@@ -51,6 +51,7 @@ try
 catch e
     fprintf('\n*********************\nRunAllTests.m failed!\n*********************\n');
     disp(getReport(e,'extended'));
-    exit(1);
+    
+    if isunix, exit(1); end % hack to only quit on CI machine
 end
-exit;
+if isunix, exit; end

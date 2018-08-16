@@ -44,7 +44,8 @@ cfg_def.min_cluster_quality = 5;
 cfg_def.getRatings = 0;
 cfg_def.getTTnumbers = 1;
 cfg_def.verbose = 1;
-cfg_def.uint = '32';
+cfg_def.uint = '32'; % 32-bit timestamps is the default, but at some point Neuralynx switched to 64-bit timestamps
+cfg_def.checkSubDirs = 0;
 
 mfun = mfilename;
 cfg = ProcessConfig(cfg_def,cfg_in,mfun); % this takes fields from cfg_in and puts them into cfg
@@ -73,11 +74,11 @@ end
 
 if isempty(cfg.fc)
         
-        cfg.fc = FindFiles('*.t');
+        cfg.fc = FindFiles('*.t','CheckSubdirs',cfg.checkSubDirs);
         
         if cfg.load_questionable_cells
             if cfg.verbose; fprintf('%s: WARNING: loading questionable cells\n',mfun); end
-           cfg.fc = cat(1,cfg.fc,FindFiles('*._t'));
+           cfg.fc = cat(1,cfg.fc,FindFiles('*._t','CheckSubdirs',cfg.checkSubDirs));
         end
         
 else
@@ -113,7 +114,7 @@ for iF = 1:nFiles
             case '32'
                 S.t{iF} = fread(tfp,inf,'uint32'); % read as 32 bit ints
             case '64'
-                S.t{iF} = fread(tfp,inf,'uint64');	% read as 64 bit ints
+                S.t{iF} = fread(tfp,inf,'uint64');% read as 64 bit ints
         end
         
         % set appropriate time units
