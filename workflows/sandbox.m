@@ -99,6 +99,12 @@ for iC = length(S.t):-1:1
     plot(F,10*log10(P)); xlim([0 100]);
     title('STA spectrum');
     
+    % do STA shuffles
+    
+    % randperm binned spike train and recompute, store in matrix, get mean and SD
+    
+    % for each row of the matrix also get the power spectrum, store in matrix etc...
+    
     drawnow;
 end
 
