@@ -1,14 +1,16 @@
 %%
 % remember to set path
-
+clear
 %addpath(genpath('D:\My_Documents\GitHub\striatal-spike-rhythms\chronux_2_12\spectral_analysis'));
 
 %fd = {'D:\data\adrlab\R117\R117-2007-06-20'};
 fd = {'C:\data\adrlab\R117-2007-06-20'};
+fd = {'C:\data\R042\R042-2013-08-17'};
 cd(fd{1});
 
 LoadExpKeys;
-cfg = []; cfg.fc = ExpKeys.goodGamma_vStr;
+%cfg = []; cfg.fc = ExpKeys.goodGamma_vStr;
+cfg = []; cfg.fc = ExpKeys.goodTheta;
 csc = LoadCSC(cfg); csc.data = csc.data-nanmean(csc.data); % may need to locdetrend
 
 %%
@@ -35,14 +37,16 @@ title(toc)
 %% Fourier transform of xcorr -- way faster!
 cfg = [];
 cfg.binsize = 0.001; cfg.Fs = 1./cfg.binsize;
-%cfg.maxlag = 10000;
-cfg.nShuf = 10;
+%cfg.maxlag = 1; cfg.maxlag = cfg.maxlag./cfg.binsize;
+cfg.nShuf = 5;
 %cfg.gauss_w = 1; cfg.gauss_sd = 0.002;
 
 %gauss_window = cfg.gauss_w./cfg.binsize; % 1 second window
 %gauss_SD = cfg.gauss_sd./cfg.binsize; % 0.02 seconds (20ms) SD
 %gk = gausskernel(gauss_window,gauss_SD); 
 %gk = gk.*cfg.binsize; % normalize by binsize
+
+clear bigP* STA*
 
 tbin_edges = firstSpike(S):cfg.binsize:lastSpike(S);
 
@@ -66,9 +70,8 @@ for iC = length(S.t):-1:1
     title(sprintf('Cell %d',iC));
     
     % transform
-    %[P,F] = pwelch(acf(1:floor(length(acf)/2)),2^11,2^10,[],cfg.Fs); P(1:5) = NaN;
-    [P,F] = pwelch(acf,2^12,2^11,[],cfg.Fs); P(1:5) = NaN;
-    
+    [P,F] = pwelch(acf(1:floor(length(acf)/2)),2^11,1.5*2^10,[],cfg.Fs); P(1:5) = NaN;
+
     subplot(223);
     plot(F,10*log10(P)); xlim([0 100]);
     title('acorr spectrum');
@@ -81,8 +84,7 @@ for iC = length(S.t):-1:1
         spk_binned_shuf = spk_binned(randperm(length(spk_binned)));
         %spk_binned_shuf = conv2(spk_binned_shuf,gk,'same');
         [acf,tvec] = ComputeACF(cfg,spk_binned_shuf);
-        %this_shufP(iShuf,:) = pwelch(acf(1:floor(length(acf)/2)),2^11,2^10,[],cfg.Fs); this_shufP(iShuf,1:5) = NaN;
-        this_shufP(iShuf,:) = pwelch(acf,2^12,2^11,[],cfg.Fs); this_shufP(iShuf,1:5) = NaN;
+        this_shufP(iShuf,:) = pwelch(acf(1:floor(length(acf)/2)),2^11,1.5*2^10,[],cfg.Fs); this_shufP(iShuf,1:5) = NaN;
     end
     
     bigP_shufmean(iC,:) = nanmean(this_shufP);
@@ -166,8 +168,11 @@ keep = pval < 0.05;
 hold on; plot(xval(keep),cc(keep),'.b','MarkerSIze',20);
 %%
 function [acf,tvec] = ComputeACF(cfg,spk_binned)
-%[acf,tvec] = xcorr(spk_binned,spk_binned,cfg.maxlag);
-[acf,tvec] = xcorr(spk_binned,spk_binned);
+if isfield(cfg,'maxlag')
+    [acf,tvec] = xcorr(spk_binned,spk_binned,cfg.maxlag);
+else
+    [acf,tvec] = xcorr(spk_binned,spk_binned);
+end
 tvec = tvec.*cfg.binsize;
 acf(ceil(length(acf)/2)) = 0;
 end
