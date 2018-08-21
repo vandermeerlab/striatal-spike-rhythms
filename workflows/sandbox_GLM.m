@@ -27,12 +27,16 @@ cfg_master.dt = 0.001;
 cfg_tcx = [];
 cfg_tcx.bins = 50:10:600;
 
-%% establish common timebase
+%% establish common timebase and other variables common across cells in this session
 TVECe = ExpKeys.TimeOnTrack:cfg_master.dt:ExpKeys.TimeOffTrack; % edges
 TVECc = TVECe(1:end-1)+cfg_master.dt/2; % centers
 
-%% construct variables
-for iC = length(S.t):-1:1
+spd = getLinSpd([],pos);
+
+C = cvpartition(length(TVECc),'KFold',10);
+
+%% loop over all cells 
+for iC = 1%length(S.t):-1:1
 %iC = 2;
 
 %%% dependent variable: binned spike train %%%
@@ -50,6 +54,11 @@ cfg_tc.bins = 0:10:480;
 [predicted_y, lambda_y, y_binned] = MakeTC_1D(cfg_tc, pos.tvec, pos.data(2,:), TVECc, spk_binned);
 
 %%% TODO: 2-D field predictor, requires 2-D tuning curve function %%%
+
+%%% PREDICTOR: speed %%%
+cfg_spd = cfg_tc;
+cfg_spd.bins = 0:5:120;
+[pred_spd, lambda_spd, spd_binned] = MakeTC_1D(cfg_spd, pos.tvec, spd.data, TVECc, spk_binned);
 
 %%% PREDICTOR: LFP phase (e.g. gamma) %%%
 cfg_phi = [];
@@ -101,8 +110,8 @@ cfg_ttr = []; cfg_ttr.interp = 'nearest'; cfg_ttr.bins = [-5:0.1:5];
 
 %% implement models
 %m1 = fitglm(cat(1,predicted_x,predicted_y,ttr,cif')', spk_binned', 'Distribution', 'poisson')
-m2 = fitglm(cat(1,predicted_x,predicted_y,ttr,cif',cif_full')', spk_binned', 'Distribution', 'poisson')
-m3 = fitglm(cat(1,predicted_x,predicted_y,ttr,cif',cif_full',delta_phi,theta_phi,beta_phi,lowGamma_phi,highGamma_phi)', spk_binned', 'Distribution', 'poisson')
+m2 = fitglm(cat(1,predicted_x,predicted_y,ttr,cif',cif_full',pred_spd)', spk_binned', 'Distribution', 'poisson')
+m3 = fitglm(cat(1,predicted_x,predicted_y,ttr,cif',cif_full',pred_spd,delta_phi,theta_phi,beta_phi,lowGamma_phi,highGamma_phi)', spk_binned', 'Distribution', 'poisson')
 
 OUT_tstat(iC,:) = m3.Coefficients.tStat;
 
