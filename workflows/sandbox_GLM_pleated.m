@@ -3,12 +3,15 @@ clear;
 % paths: striatal-spike-rhythms
 
 % load data
-cd('C:\data\adrlab\R117-2007-06-20');
+%cd('C:\data\adrlab\R117-2007-06-20');
+cd('C:\data\adrlab\R132-2007-10-20');
 LoadExpKeys;
 
 % spikes -- should remove cells with < 100 spikes on the track here
 % (currently in main cell loop)
 S = LoadSpikes([]);
+S = KeepCells(S);
+%S.t = S.t(setxor(1:27,[12 16]));
 
 % LFP
 cfg = []; cfg.fc = ExpKeys.goodGamma_vStr;
@@ -29,6 +32,8 @@ cfg_master.f.theta = [6.5 9.5];
 cfg_master.f.beta = [14 25];
 cfg_master.f.lowGamma = [40 65];
 cfg_master.f.highGamma = [70 100];
+cfg_master.nPleats = 2;
+cfg_master.kFold = 10;
 
 cfg_tcx = []; % tuning curve for x position
 cfg_tcx.bins = 50:10:600;
@@ -38,6 +43,9 @@ cfg_phi.dt = median(diff(csc.tvec));
 cfg_phi.ord = 100;
 cfg_phi.bins = -pi:pi/18:pi;
 cfg_phi.interp = 'nearest';
+
+%% initialize variables
+clear mdiff; % session-wide variable for model differences
 
 %% establish common timebase and other variables common across cells in this session
 TVECe = ExpKeys.TimeOnTrack:cfg_master.dt:ExpKeys.TimeOffTrack; % edges
@@ -54,12 +62,9 @@ MASTER_keep = ~isnan(ttr); % NEED THIS TO RESTRICT BINNED SPIKE TRAIN LATER!
 t_to_reward = t_to_reward(MASTER_keep);
 TVECc = TVECc(MASTER_keep);
 
-% 
-C = cvpartition(length(TVECc),'KFold',2);
-
-%%% TODO: implement cross-validation schemes where multiple training folds
-%%% are fit to the same testing fold. Is there a statistics terminology
-%%% and/or theory for that?
+for iPleat = 1:cfg_master.nPleats
+    C{iPleat} = cvpartition(length(TVECc),'KFold',cfg_master.kFold);
+end
 
 % LFP features
 disp('Computing session-wide LFP features...');
@@ -80,8 +85,10 @@ end
 %
 spd = getLinSpd([],pos);
 
+%%% TODO: time / nTrials predictor
+
 %% loop over all cells 
-for iC = length(S.t)-1:-1:1
+for iC = length(S.t):-1:1
 
 % dependent variable: binned spike train
 spk_binned = histc(S.t{iC}, TVECe); spk_binned = spk_binned(1:end - 1);
@@ -114,7 +121,7 @@ predicted_y = predicted_y-nanmean(predicted_y);
 
 %%% PREDICTOR: speed %%%
 cfg_spd = cfg_tc;
-cfg_spd.bins = 0:5:120;
+cfg_spd.bins = 0:10:200;
 [pred_spd, ~, spd_binned] = MakeTC_1D(cfg_spd, pos.tvec, spd.data, TVECc, spk_binned);
 pred_spd = pred_spd-nanmean(pred_spd);
 
@@ -136,10 +143,11 @@ cif = (cif > 0);
 % how do results depend on this thing being present or not?
 cfg_acf = []; cfg_acf.maxlag = 100; cfg_acf.binsize = cfg_master.dt;
 cfg_acf.sided = 'onezero';
-[acf,acf_tvec] = ComputeACF(cfg_acf,spk_binned);
+[acf, acf_tvec] = ComputeACF(cfg_acf, spk_binned);
 
-cif_full = conv(spk_binned,acf,'same');
+cif_full = conv(spk_binned, acf ./ sum(acf), 'same');
 cif_full = cif_full-nanmean(cif_full);
+cif_full(cif) = 0; % absolute refractory period
 
 %%% PREDICTOR: time to reward
 [ttr, lambda_ttr, ttr_binned] = MakeTC_1D(cfg_ttr, TVECc, t_to_reward, TVECc, spk_binned);
@@ -157,26 +165,37 @@ LFP_predictors = [];
 for iF = 1:length(fb_names)
     LFP_predictors = cat(1,LFP_predictors,lfp_pred.(fb_names{iF}));
 end
+   
+% temporary variables to store error across pleats and folds
+this_mdiff.full = zeros(size(spk_binned)); % running total of model diffs (across pleats and folds)
+for iF = 1:length(fb_names)
+   this_mdiff.(fb_names{iF}) = zeros(size(spk_binned));
+end
+this_mdiff.count = zeros(size(spk_binned)); % count of test idxs (across pleats and folds, to compute mean later)    
+
+for iPleat = 1:cfg_master.nPleats
     
-for iFold = 1:C.NumTestSets
+for iFold = 1:C{iPleat}.NumTestSets
+    
+    fprintf('Pleat %d fold %d...\n', iPleat, iFold);
     
     % first, train models
-    tr_idx = C.training(iFold);
+    tr_idx = C{iPleat}.training(iFold);
     
     % baseline model without LFP features
-    m2 = fitglm(base_predictors(:,tr_idx)', spk_binned(tr_idx)', 'Distribution', 'poisson')
+    m2 = fitglm(base_predictors(:,tr_idx)', spk_binned(tr_idx)', 'Distribution', 'binomial')
     
     % big model with all the LFP features so we can correlate them
-    m3 = fitglm(cat(1, base_predictors(:,tr_idx), LFP_predictors(:,tr_idx))', spk_binned(tr_idx)', 'Distribution', 'poisson')
+    m3 = fitglm(cat(1, base_predictors(:,tr_idx), LFP_predictors(:,tr_idx))', spk_binned(tr_idx)', 'Distribution', 'binomial')
     OUT_tstat(iC,:) = m3.Coefficients.tStat;
     
     % baseline + specific LFP feature models
     for iF = 1:length(fb_names)
-        mLFP{iF} = fitglm(cat(1, base_predictors(:,tr_idx), LFP_predictors(iF,tr_idx))', spk_binned(tr_idx)', 'Distribution', 'poisson');
+        mLFP{iF} = fitglm(cat(1, base_predictors(:,tr_idx), LFP_predictors(iF,tr_idx))', spk_binned(tr_idx)', 'Distribution', 'binomial');
     end
     
     %%% test models %%%
-    te_idx = C.test(iFold);
+    te_idx = C{iPleat}.test(iFold);
     
     m2p = m2.predict(base_predictors(:,te_idx)');
     sse2 = (m2p-spk_binned(te_idx)).^2;
@@ -184,17 +203,34 @@ for iFold = 1:C.NumTestSets
     m3p = m3.predict(cat(1, base_predictors(:,te_idx), LFP_predictors(:,te_idx))');
     sse3 = (m3p-spk_binned(te_idx)).^2;
     
-    mdiff.full(iC,te_idx) = sse2-sse3; % overall model improv
+    this_mdiff.full(te_idx) = this_mdiff.full(te_idx) + (sse2-sse3);
+    this_mdiff.count(te_idx) = this_mdiff.count(te_idx) + 1;
+    %mdiff.full(iC,te_idx) = sse2-sse3; % overall model improv
     
     for iF = 1:length(fb_names)
     
         this_p = mLFP{iF}.predict(cat(1, base_predictors(:,te_idx), LFP_predictors(iF,te_idx))');
         this_sse = (this_p-spk_binned(te_idx)).^2;
-        mdiff.(fb_names{iF})(iC,te_idx) = sse2-this_sse;
+        
+        this_mdiff.(fb_names{iF})(te_idx) = this_mdiff.(fb_names{iF})(te_idx) + (sse2-this_sse);
+        %mdiff.(fb_names{iF})(iC,te_idx) = sse2-this_sse;
         
     end
-    
+
 end % over folds
+
+plot(this_mdiff.full ./ this_mdiff.count);
+title(sprintf('cell %d pleat %d', iC, iPleat));
+drawnow;
+
+end % over pleats
+
+% compute average over pleats and folds
+mdiff.full(iC,:) = this_mdiff.full ./ this_mdiff.count;
+for iF = 1:length(fb_names)
+    mdiff.(fb_names{iF})(iC,:) = this_mdiff.(fb_names{iF}) ./ this_mdiff.count;
+end
+
 end % over cells
 
 %% make correlation matrix of GLM predictors
@@ -211,8 +247,9 @@ set(gca,'YTick',1:11,'YTickLabel',{'x','y','tr','ac','s','d','t','b','lg','hg'})
 figure;
 celldiffmean = nanmean(mdiff.full,2);
 
-cellskip = celldiffmean < 0; %[]; % TODO: figure out why some model diffs end up being NaN -- model fit fail?
-mdiff.full(cellskip,:) = NaN;
+cellskip = [];
+%cellskip = [6 7 19]; %celldiffmean < 0; %[]; % TODO: figure out why some model diffs end up being NaN -- model fit fail?
+%mdiff.full(cellskip,:) = NaN;
 
 celldiffmean = nanmean(mdiff.full,2);
 subplot(221);
@@ -226,7 +263,7 @@ ylabel('Prediction improvement with LFP features added');
 xlabel('cell #');
 
 %mdiffmean = (medfilt1(nanmean(mdiff.full),1001));
-nF = 1001; this_f = ones(nF,1)./nF;
+nF = 3001; this_f = ones(nF,1)./nF;
 mdiffmean = conv(nanmean(mdiff.full),this_f,'same');
 
 [~, lambda_mttr, ~] = MakeTC_1D(cfg_ttr, TVECc, t_to_reward, TVECc, mdiffmean);
@@ -256,7 +293,7 @@ for iF = 1:length(fb_names)
 
     mdiff.(fb_names{iF})(cellskip,:) = NaN;
     
-    nF = 1001; this_f = ones(nF,1)./nF;
+    nF = 3001; this_f = ones(nF,1)./nF;
     mdiffmean = conv(nanmean(mdiff.(fb_names{iF})),this_f,'same');
 
     %mdiffmean = (medfilt1(nanmean(mdiff.(fb_names{iF})),1001));
@@ -268,7 +305,7 @@ for iF = 1:length(fb_names)
     subplot(221);
     plot(nanmean(mdiff.(fb_names{iF}),2));
     hold on;
-    plot(nanmean(mdiff.(fb_names{iF}),2),'.','MarkerSize',10);
+    plot(nanmean(mdiff.(fb_names{iF}),2),'.b','MarkerSize',20);
     
     subplot(222); % average improvement
     [ax h1 h2] = plotyy(cfg_ttr.bins,this_mttr,cfg_ttr.bins,this_env);
@@ -300,7 +337,11 @@ for iF = 1:length(fb_names)
 
 end
 
-%% correlate GLM results with things like spike spectrum, STA spectrum
+%% correlate GLM results with things like spike spectrum, STA spectrum (across cells)
+
+%% correlate tuning curves with GLM results
+% why are the TTR GLM fits so "streaky"?
+% is there some correlation between TTR, space, movement onset TCs
 
 %% some functions
 function [predicted_x, lambda_x, x_binned] = MakeTC_1D(cfg, tvec, data, TVECc, spk_binned)
@@ -421,3 +462,16 @@ for iRow = size(in, 1):-1:1
 end
 end
 % could speed up by repmatting
+
+function S = KeepCells(S)
+thr = 500;
+
+nCells = length(S.t);
+for iC = nCells:-1:1
+   l(iC) = length(S.t{iC}); 
+end
+keep = l >= thr;
+
+S.label = S.label(keep);
+S.t = S.t(keep);
+end
