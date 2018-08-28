@@ -315,6 +315,37 @@ imagesc(corrcoef(OUT_tstat(setxor(cellskip,1:length(celldiffmean)),:)));
 set(gca,'XTick',1:16,'XTickLabel',{'i','x','y','tr','ac','s','d','t','b','lg','hg','de','te','be','lge','hge'});
 set(gca,'YTick',1:16,'YTickLabel',{'i','x','y','tr','ac','s','d','t','b','lg','hg','de','te','be','lge','hge'});
 
+%% normalized by firing rate
+if 0
+    for iC = length(S.t):-1:1
+        this_spk_binned = histc(S.t{iC}, TVECe); spk_binned = spk_binned(1:end - 1);
+        [~, lambda_ttr(iC,:), ~] = MakeTC_1D(cfg_ttr, TVECc, t_to_reward, TVECc, this_spk_binned);
+        
+        nF = 501; this_f = ones(nF,1)./nF;
+        mdiffmean = conv(mdiff.full(iC,:),this_f,'same');
+        [~, lambda_ttr_mdiff(iC,:), ~] = MakeTC_1D(cfg_ttr, TVECc, t_to_reward, TVECc, mdiffmean);
+    end
+    mdiff_fullN = lambda_ttr_mdiff ./ lambda_ttr;
+    mdiff_fullN(isinf(mdiff_fullN)) = NaN;
+    
+    figure; subplot(222);
+    [ax h1 h2] = plotyy(cfg_ttr.bins,nanmean(mdiff_fullN),cfg_ttr.bins,lambda_spd);
+    hold on;
+    set(h1,'LineWidth',2);
+    set(gca,'XTick',-5:5,'LineWidth',1,'FontSize',18);
+    ylabel('Prediction improvement with LFP features added');
+    xlabel('time from reward (s)');
+    box off;
+    
+    subplot(223);
+    imagesc(lambda_ttr);
+    
+    subplot(224);
+    plot(cfg_ttr.bins,nanmean(lambda_ttr));
+    set(gca,'XTick',-5:5,'LineWidth',1,'FontSize',18); box off;
+    ylabel('frate');
+    xlabel('time from reward (s)');
+end
 %% different freq bands - contribution of phase
 for iF = 1:length(fb_names)
 
