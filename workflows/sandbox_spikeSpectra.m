@@ -1,4 +1,4 @@
-%%
+%% script exploring spike autocorrelations, spike spectra, and spike-triggered averages
 % remember to set path
 clear
 %addpath(genpath('D:\My_Documents\GitHub\striatal-spike-rhythms\chronux_2_12\spectral_analysis'));
@@ -13,15 +13,9 @@ LoadExpKeys;
 cfg = []; cfg.fc = ExpKeys.goodTheta;
 csc = LoadCSC(cfg); csc.data = csc.data-nanmean(csc.data); % may need to locdetrend
 
-%%
-
+%% load data
 S = LoadSpikes([]);
 
-t = 1:0.1:1000;
-t = t + 0.01*randn(size(t));
-t = t';
-
-t = S.t{1};
 %% chronux spike spectrum -- how can we control the number of frequency bins? seems unwieldy!
 tic
 params = []; 

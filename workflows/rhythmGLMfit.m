@@ -1,6 +1,7 @@
-%% GLM sandbox for spike prediction with LFP features
+function rhythmGLMfit(cfg_in)
+% GLM for spike prediction with LFP features
 %
-% This top-level script fits a number of GLMs to single session spike train data.
+% This top-level function fits a number of GLMs to single session spike train data.
 %
 % The overall idea is to test whether addition of LFP features, such as
 % theta power and/or gamma phase, improve cross-validated model prediction.
@@ -25,13 +26,13 @@
 %
 % maybe storing errors is overkill though: too much space, could store
 % tuning curves for various things instead
-
-%% setup
-clear;
-% paths: striatal-spike-rhythms
+%
+% run this with data session to analyze as the working folder.
+%
+% required path: striatal-spike-rhythms github repo
 
 % load data
-cd('C:\data\adrlab\R117-2007-06-20');
+%cd('C:\data\adrlab\R117-2007-06-20');
 %cd('D:\data\adrlab\R132\R132-2007-10-20');
 LoadExpKeys;
 
@@ -49,7 +50,7 @@ pos = LoadPos([]);
 
 % reward deliveries
 evt = LoadEvents([]);
-reward_t = evt.t{2}; % should generalize this with known labels etc.. and remove double labels
+reward_t = evt.t{1}; % should generalize this with known labels etc.. and remove double labels
 
 %% params
 cfg_master = []; % overall params
@@ -61,6 +62,9 @@ cfg_master.f.lowGamma = [40 65];
 cfg_master.f.highGamma = [70 100];
 cfg_master.nPleats = 2;
 cfg_master.kFold = 2;
+cfg_master.writeOutput = 0;
+cfg_master.output_prefix = 'R0_';
+cfg_master.output_dir = 'C:\temp';
 
 cfg_phi = []; % LFP features
 cfg_phi.dt = median(diff(csc.tvec));
@@ -69,8 +73,6 @@ cfg_phi.bins = -pi:pi/18:pi;
 cfg_phi.interp = 'nearest';
 
 %% initialize variables
-clear mdiff; % session-wide variable for model differences
-
 % overall plan:
 %
 % for each cell, p table contains regressors. these are NOT stored across cells (into session data) for memory reasons
@@ -106,7 +108,6 @@ sd.m.baseline.modelspec = 'spk ~ 1 + linpos + spd + ttr + cif';
 %sd.m.tphi.modelspec = 'spk ~ 1 + linpos + spd + ttr + cif + theta_phase';
 sd.m.allphi.modelspec = 'spk ~ 1 + linpos + spd + ttr + cif + delta_phase + beta_phase + theta_phase + lowGamma_phase + highGamma_phase';
 sd.m.all.modelspec = 'spk ~ 1 + linpos + spd + ttr + cif + delta_phase + beta_phase + theta_phase + lowGamma_phase + highGamma_phase + delta_env + beta_env + theta_env + lowGamma_env + highGamma_env';
-
 
 % init error vars
 mn = fieldnames(sd.m);
@@ -163,7 +164,7 @@ for iC = nCells:-1:1
     % what happens for a symmetric acorr?
     % what happens when x-val is done on "blocked" rather than random folds?
     % how do results depend on this thing being present or not?
-    cfg_acf = []; cfg_acf.maxlag = 100; cfg_acf.binsize = cfg_master.dt;
+    cfg_acf = []; cfg_acf.maxlag = 500; cfg_acf.binsize = cfg_master.dt;
     cfg_acf.sided = 'onezero';
     [acf, acf_tvec] = ComputeACF(cfg_acf, spk_binned);
     
@@ -223,14 +224,17 @@ for iC = nCells:-1:1
             
             for iModel = 1:length(mn)
                 
-                % train it
+                % train initial model
                 this_m = fitglm(p(tr_idx,:), sd.m.(mn{iModel}).modelspec, 'Distribution', 'binomial')
                 sd.m.(mn{iModel}).tstat(iC,:) = this_m.Coefficients.tStat; % should initialize this, but that's a pain
                 sd.m.(mn{iModel}).varnames = this_m.PredictorNames;
                 
-                % note, could refine model by throwing out ineffective
-                % predictors?
-                
+                % refine model by throwing out ineffective predictors
+                toss = this_m.Coefficients.Row(abs(this_m.Coefficients.tStat) < 2);
+                for iToss = 1:length(toss)
+                   this_m.removeTerms(toss{iToss}); 
+                end
+
                 % test it and add resulting error to running total
                 this_err = this_m.predict(p(te_idx,:));
                 this_err = (this_err - spk_binned(te_idx)).^2;
@@ -245,7 +249,7 @@ for iC = nCells:-1:1
 end % over cells
 
 %% analyze models
-cfg_master.smooth = 1001; % smoothing window (in samples) for error
+cfg_master.smooth = 501; % smoothing window (in samples) for error
 
 [~, lambda_spd, ~] = MakeTC_1D(cfg_ttr, sd.TVECc, t_to_reward, sd.TVECc, spd_binned); % speed by time to reward
 
@@ -290,127 +294,28 @@ for iM = 1:length(mn)
     subplot(224);
     imagesc(corrcoef(sd.m.(mn{iM}).tstat));
 
+    % could show each cell's model improvement across time
+    
 end
 
 %% prepare and write output
 if cfg_master.writeOutput
 
+    sd.linpos = linpos;
     sd.t_to_reward = t_to_reward;
     sd.cfg = cfg_master;
     
-    save(cfg_master.output_fn,'sd'); % should add option to save in specified output dir
+    save(cfg_master.output_prefix,'sd'); % should add option to save in specified output dir
     
 end
-    
+  
+end % of top-level function
+
 %% TODO: correlate GLM results with things like spike spectrum, STA spectrum (across cells)
 
 %% TODO: correlate tuning curves with GLM results
 % why are the TTR GLM fits so "streaky"?
 % is there some correlation between TTR, space, movement onset TCs
-
-%% some functions
-function [predicted_x, lambda_x, x_binned] = MakeTC_1D(cfg, tvec, data, TVECc, spk_binned)
-% construct tuning curve (mean value of spk_binned for binned values of
-% data
-%
-% INPUTS:
-%
-% tvec, data: describe tuning variable (e.g. position, phase)
-% TVECc, spk_binned: describe spike train
-%
-% cfg.interp: option to use for interpolation, 'linear', 'nearest' (for
-%   things like phase)
-% cfg.bins: bin edges (vector) for constructing tuning curves
-%
-% OUTPUTS:
-%
-% x_binned: binned version of data input
-% lambda_x: tuning curve (size cfg.bins), gives spike probability as
-%   function of binned tuning variable
-% predicted_x: predicted value of tuning variable for each TVECc input
-%   sample (simply looked up in lambda_x)
-
-x_interp = interp1(tvec, data, TVECc, cfg.interp); % get variable of interest on common timebase 
-[x_occ_hist, x_binned] = histc(x_interp, cfg.bins); % bin variable of interest
-x_binned(x_interp < cfg.bins(1) | x_interp >= cfg.bins(end)) = NaN;
-
-bin_edges = 0.5:1:length(cfg.bins) + 0.5; % edges for binned version of tuning variable
-
-if islogical(spk_binned) % binned spike train (binary), can use fast method
-    x_spk = x_binned(spk_binned); % variable of interest at spike times
-    x_spk_hist = histc(x_spk, bin_edges); x_spk_hist = x_spk_hist(1:end - 1);
-    lambda_x = x_spk_hist ./ x_occ_hist;
-else % continuous input, need to average across samples in each bin (slow)
-    for iB = length(cfg.bins):-1:1
-        this_samples = (x_binned == iB);
-        lambda_x(iB) = nanmean(spk_binned(this_samples));
-    end
-end
-
-% based on tuning curve, get lambdas for each time bin
-predicted_x = nan(size(x_binned));
-keep = x_binned ~= 0 & ~isnan(x_binned);
-predicted_x(keep) = lambda_x(x_binned(keep));
-
-end
-
-function [phase, env] = ComputePhase(cfg, csc)
-% compute csc.data phase and envelope in frequency band cfg.fpass
-
-Fs = (1 ./ cfg.dt);
-
-d = fdesign.bandpass('N,Fp1,Fp2,Ap', 10, cfg.fpass(1), cfg.fpass(2), .5, Fs);
-Hd = design(d, 'cheby1');
-
-if cfg.debug
-   figure;
-   fvtool(Hd);
-end
-
-data = filtfilt(Hd.sosMatrix, Hd.ScaleValues, csc.data);
-h = hilbert(data);
-phase = angle(h);
-env = abs(h);
-
-end
-
-function t_to_reward = ComputeTTR(reward_t,TVECc)
-% find time to closest reward at each time point in TVECc
-
-t_to_reward = TVECc-reward_t(1); % running total
-for iR = 2:length(reward_t)
-    
-    this_dt = TVECc-reward_t(iR);
-    swap_idx = find(abs(this_dt) < abs(t_to_reward)); % samples that are closer than running total
-    t_to_reward(swap_idx) = this_dt(swap_idx);
-end
-
-end
-
-%%
-function [acf,tvec] = ComputeACF(cfg,spk_binned)
-
-if isfield(cfg,'maxlag')
-    [acf,tvec] = xcorr(spk_binned,spk_binned,cfg.maxlag);
-else
-    [acf,tvec] = xcorr(spk_binned,spk_binned);
-end
-
-tvec = tvec.*cfg.binsize;
-acf(ceil(length(acf)/2)) = 0;
-
-if isfield(cfg,'sided')
-    cut_idx = ceil(length(acf)/2);
-    switch cfg.sided
-        case 'one'
-            acf = acf(cut_idx:end);
-            tvec = tvec(cut_idx:end);
-        case 'onezero'
-            acf(1:cut_idx-1) = 0;
-    end
-end
-
-end
 
 %%
 function out = zmat(in,cfg)
@@ -428,6 +333,7 @@ end
 end
 % could speed up by repmatting
 
+%%
 function S = KeepCells(S)
 thr = 500;
 
@@ -459,5 +365,40 @@ Coord_out.standardized = 0;
 Coord_out.units = 'px';
 
 linpos_tsd = LinearizePos([],pos,Coord_out);
+
+end
+
+%%
+function t_to_reward = ComputeTTR(reward_t,TVECc)
+% find time to closest reward at each time point in TVECc
+
+t_to_reward = TVECc-reward_t(1); % running total
+for iR = 2:length(reward_t)
+    
+    this_dt = TVECc-reward_t(iR);
+    swap_idx = find(abs(this_dt) < abs(t_to_reward)); % samples that are closer than running total
+    t_to_reward(swap_idx) = this_dt(swap_idx);
+end
+
+end
+
+%%
+function [phase, env] = ComputePhase(cfg, csc)
+% compute csc.data phase and envelope in frequency band cfg.fpass
+
+Fs = (1 ./ cfg.dt);
+
+d = fdesign.bandpass('N,Fp1,Fp2,Ap', 10, cfg.fpass(1), cfg.fpass(2), .5, Fs);
+Hd = design(d, 'cheby1');
+
+if cfg.debug
+   figure;
+   fvtool(Hd);
+end
+
+data = filtfilt(Hd.sosMatrix, Hd.ScaleValues, csc.data);
+h = hilbert(data);
+phase = angle(h);
+env = abs(h);
 
 end
