@@ -1,16 +1,44 @@
+%% GLM sandbox for spike prediction with LFP features
+%
+% This top-level script fits a number of GLMs to single session spike train data.
+%
+% The overall idea is to test whether addition of LFP features, such as
+% theta power and/or gamma phase, improve cross-validated model prediction.
+%
+% The analysis proceeds as follows:
+% - load data
+% - define models (in sd.m.modelspec), MUST include a baseline model
+% - prepare session-wide variables (linearized position, LFP features,
+%   speed etc) on common timebase ('TVECc')
+% - for each cell:
+%   * prepare regressors for this cell
+%   - for each cross-validation run ("pleat"; a set of folds) and fold:
+%     + fit models on training data
+%     + test models
+%     + store error relative to baseline model
+% - for each model:
+%   * plot error across cells
+%   * plot error across time to reward (tuning curve)
+%
+% output error is stored in the sd variable, which can be saved for a later
+% collector to aggregate across sessions.
+%
+% maybe storing errors is overkill though: too much space, could store
+% tuning curves for various things instead
+
 %% setup
 clear;
 % paths: striatal-spike-rhythms
 
 % load data
-%cd('C:\data\adrlab\R117-2007-06-20');
-cd('D:\data\adrlab\R132\R132-2007-10-20');
+cd('C:\data\adrlab\R117-2007-06-20');
+%cd('D:\data\adrlab\R132\R132-2007-10-20');
 LoadExpKeys;
 
 % spikes
-S = LoadSpikes([]);
-S = KeepCells(S); % note this has a hardcoded parameter (500 spikes minimum)
-nCells = length(S.t);
+sd.S = LoadSpikes([]);
+sd.S = KeepCells(sd.S); % note this has a hardcoded parameter (500 spikes minimum)
+nCells = length(sd.S.t);
 
 % LFP
 cfg = []; cfg.fc = ExpKeys.goodGamma_vStr;
@@ -46,6 +74,8 @@ clear mdiff; % session-wide variable for model differences
 % overall plan:
 %
 % for each cell, p table contains regressors. these are NOT stored across cells (into session data) for memory reasons
+% but maybe session-wide variables should be stored (time_to_reward,
+% linpos, LFP features) for later analysis
 %
 % across cells, sd (session data) struct tracks:
 % - TVECc: centers of time bins for data to be fitted [1 x nTimeBins]
@@ -54,7 +84,6 @@ clear mdiff; % session-wide variable for model differences
 % - .m.(modelName).modelspec
 
 p = table;
-sd = [];
 
 % common timebase for this session
 TVECe = ExpKeys.TimeOnTrack:cfg_master.dt:ExpKeys.TimeOffTrack; % edges
@@ -71,8 +100,13 @@ MASTER_keep = ~isnan(ttr); % NEED THIS TO RESTRICT BINNED SPIKE TRAIN LATER!
 t_to_reward = t_to_reward(MASTER_keep);
 sd.TVECc = sd.TVECc(MASTER_keep);
 
-sd.m.baseline.modelspec = 'spk ~ 1 + time + linpos + spd + ttr + cif';
-sd.m.LFPphase.modelspec = 'spk ~ 1 + time + linpos + spd + ttr + cif + lowGamma_phase + highGamma_phase';
+% baseline model MUST be defined first or things will break!
+sd.m.baseline.modelspec = 'spk ~ 1 + linpos + spd + ttr + cif';
+%sd.m.gphi.modelspec = 'spk ~ 1 + linpos + spd + ttr + cif + lowGamma_phase + highGamma_phase';
+%sd.m.tphi.modelspec = 'spk ~ 1 + linpos + spd + ttr + cif + theta_phase';
+sd.m.allphi.modelspec = 'spk ~ 1 + linpos + spd + ttr + cif + delta_phase + beta_phase + theta_phase + lowGamma_phase + highGamma_phase';
+sd.m.all.modelspec = 'spk ~ 1 + linpos + spd + ttr + cif + delta_phase + beta_phase + theta_phase + lowGamma_phase + highGamma_phase + delta_env + beta_env + theta_env + lowGamma_env + highGamma_env';
+
 
 % init error vars
 mn = fieldnames(sd.m);
@@ -112,207 +146,165 @@ for iC = nCells:-1:1
 
     fprintf('Cell %d/%d...\n',iC,nCells);
     
-% dependent variable: binned spike train
-spk_binned = histc(S.t{iC}, TVECe); spk_binned = spk_binned(1:end - 1);
+    % dependent variable: binned spike train
+    spk_binned = histc(sd.S.t{iC}, TVECe); spk_binned = spk_binned(1:end - 1);
+    
+    spk_binned = logical(spk_binned > 0); % binarize
+    %k = gausskernel(50,2); % smoothing works too, should make into option
+    %spk_binned = conv2(spk_binned,k,'same');
+    
+    %%% PREDICTOR: conditional intensity function
+    % note we need to do this before restricting the spike train to avoid weird breaks
+    cif = conv(spk_binned,[0 0 0 1 1],'same'); % 2 ms refractory period
+    cif = (cif > 0);
+    
+    %%% PREDICTOR: better CIF based on acorr
+    % why does this work so well?
+    % what happens for a symmetric acorr?
+    % what happens when x-val is done on "blocked" rather than random folds?
+    % how do results depend on this thing being present or not?
+    cfg_acf = []; cfg_acf.maxlag = 100; cfg_acf.binsize = cfg_master.dt;
+    cfg_acf.sided = 'onezero';
+    [acf, acf_tvec] = ComputeACF(cfg_acf, spk_binned);
+    
+    cif_full = conv(spk_binned, acf ./ sum(acf), 'same');
+    cif_full = cif_full-nanmean(cif_full);
+    cif_full(cif) = 0; % absolute refractory period
 
-spk_binned = logical(spk_binned > 0); % binarize
-%k = gausskernel(50,2); % smoothing works too, should make into option
-%spk_binned = conv2(spk_binned,k,'same');
+    p.cif = cif_full(MASTER_keep);
+    
+    %%% now can restrict spike train
+    spk_binned = spk_binned(MASTER_keep);
+    
+    %%% PREDICTOR: linpos %%%
+    cfg_linpos = [];
+    cfg_linpos.bins = linspace(min(linpos.data), max(linpos.data), 100);
+    cfg_linpos.interp = 'nearest';
+    [predicted_linpos, lambda_linpos, linpos_binned] = MakeTC_1D(cfg_linpos, linpos.tvec, linpos.data, sd.TVECc, spk_binned);
+    p.linpos = predicted_linpos' - nanmean(predicted_linpos);
+    
+    %%% PREDICTOR: speed %%%
+    cfg_spd = []; cfg_spd.interp = 'linear';
+    cfg_spd.bins = 0:10:200;
+    [pred_spd, ~, spd_binned] = MakeTC_1D(cfg_spd, pos.tvec, spd.data, sd.TVECc, spk_binned);
+    p.spd = pred_spd' - nanmean(pred_spd);
 
-%%% PREDICTOR: conditional intensity function
-% note we need to do this before restricting the spike train to avoid weird breaks
-cif = conv(spk_binned,[0 0 0 1 1],'same'); % 2 ms refractory period
-cif = (cif > 0);
-
-%%% PREDICTOR: better CIF based on acorr
-% why does this work so well? 
-% what happens for a symmetric acorr?
-% what happens when x-val is done on "blocked" rather than random folds?
-% how do results depend on this thing being present or not?
-cfg_acf = []; cfg_acf.maxlag = 100; cfg_acf.binsize = cfg_master.dt;
-cfg_acf.sided = 'onezero';
-[acf, acf_tvec] = ComputeACF(cfg_acf, spk_binned);
-
-cif_full = conv(spk_binned, acf ./ sum(acf), 'same');
-cif_full = cif_full-nanmean(cif_full);
-cif_full(cif) = 0; % absolute refractory period
-
-p.cif = cif_full(MASTER_keep);
-
-%%% now can restrict spike train
-spk_binned = spk_binned(MASTER_keep);
-
-%%% PREDICTOR: linpos %%%
-cfg_linpos = [];
-cfg_linpos.bins = linspace(min(linpos.data), max(linpos.data), 100);
-cfg_linpos.interp = 'nearest';
-[predicted_linpos, lambda_linpos, linpos_binned] = MakeTC_1D(cfg_linpos, linpos.tvec, linpos.data, sd.TVECc, spk_binned);
-p.linpos = predicted_linpos' - nanmean(predicted_linpos);
-
-%%% PREDICTOR: speed %%%
-cfg_spd = []; cfg_spd.interp = 'linear';
-cfg_spd.bins = 0:10:200;
-[pred_spd, ~, spd_binned] = MakeTC_1D(cfg_spd, pos.tvec, spd.data, sd.TVECc, spk_binned);
-p.spd = pred_spd' - nanmean(pred_spd);
-
-%%% PREDICTOR: LFP phase and envelope for all defined bands %%%
-what = {'phase','env'};
-for iF = 1:length(fb_names) % loop over frequency bands
-    for iW = 1:length(what)
-        this_name = cat(2,fb_names{iF},'_',what{iW});
-        p.(this_name) = MakeTC_1D(cfg_phi, csc.tvec, FF.(fb_names{iF}).(what{iW}), sd.TVECc, spk_binned)';
+    %%% PREDICTOR: LFP phase and envelope for all defined bands %%%
+    what = {'phase','env'};
+    for iF = 1:length(fb_names) % loop over frequency bands
+        for iW = 1:length(what)
+            this_name = cat(2,fb_names{iF},'_',what{iW});
+            switch iW
+                case 1 % use phase bins
+                    cfg_temp = cfg_phi;
+                case 2 % envelope bins depend on data
+                    cfg_temp = cfg_phi; cfg_temp.bins = linspace(min(FF.(fb_names{iF}).(what{iW})), 0.5*max(FF.(fb_names{iF}).(what{iW})), 100);
+            end
+            p.(this_name) = MakeTC_1D(cfg_temp, csc.tvec, FF.(fb_names{iF}).(what{iW}), sd.TVECc, spk_binned)';
+        end
     end
-end
-
-%%% PREDICTOR: time to reward
-[ttr, lambda_ttr, ttr_binned] = MakeTC_1D(cfg_ttr, sd.TVECc, t_to_reward, sd.TVECc, spk_binned);
-p.ttr = ttr' - nanmean(ttr);
-
-%% x-val loop
-p.spk = spk_binned;
-clear cif cif_full;
-
-for iPleat = 1:cfg_master.nPleats
     
-    for iFold = 1:C{iPleat}.NumTestSets
-        
-        fprintf('Pleat %d fold %d...\n', iPleat, iFold);
-        
-        % get idxs for training and testing set
-        tr_idx = C{iPleat}.training(iFold); te_idx = C{iPleat}.test(iFold);
-        
-        for iModel = 1:length(mn)
-            
-            % train it
-            this_m = fitglm(p(tr_idx,:), sd.m.(mn{iModel}).modelspec, 'Distribution', 'binomial');
-            sd.m.(mn{iModel}).tstat(iC,:) = this_m.Coefficients.tStat; % should initialize this, but that's a pain
-            
-            % test it and add resulting error to running total
-            this_err = this_m.predict(p(te_idx,:));
-            sd.m.(mn{iModel}).err(iC,te_idx) = sd.m.(mn{iModel}).err(iC,te_idx) + this_err';
-            
-        end % across models
-        
-    end % over folds
-    
-end % over pleats
+    %%% PREDICTOR: time to reward
+    [ttr, lambda_ttr, ttr_binned] = MakeTC_1D(cfg_ttr, sd.TVECc, t_to_reward, sd.TVECc, spk_binned);
+    p.ttr = ttr' - nanmean(ttr);
 
+    %% x-val loop
+    p.spk = spk_binned;
+    clear cif cif_full;
+    
+    for iPleat = 1:cfg_master.nPleats
+        
+        for iFold = 1:C{iPleat}.NumTestSets
+            
+            fprintf('Pleat %d fold %d...\n', iPleat, iFold);
+            
+            % get idxs for training and testing set
+            tr_idx = C{iPleat}.training(iFold); te_idx = C{iPleat}.test(iFold);
+            
+            for iModel = 1:length(mn)
+                
+                % train it
+                this_m = fitglm(p(tr_idx,:), sd.m.(mn{iModel}).modelspec, 'Distribution', 'binomial')
+                sd.m.(mn{iModel}).tstat(iC,:) = this_m.Coefficients.tStat; % should initialize this, but that's a pain
+                sd.m.(mn{iModel}).varnames = this_m.PredictorNames;
+                
+                % note, could refine model by throwing out ineffective
+                % predictors?
+                
+                % test it and add resulting error to running total
+                this_err = this_m.predict(p(te_idx,:));
+                this_err = (this_err - spk_binned(te_idx)).^2;
+                sd.m.(mn{iModel}).err(iC,te_idx) = sd.m.(mn{iModel}).err(iC,te_idx) + (this_err ./ cfg_master.nPleats)';
+                
+            end % across models
+            
+        end % over folds
+        
+    end % over pleats
+    
 end % over cells
 
-% compute average over pleats and folds
-for iModel = 1:length(mn)
-    sd.m.(mn{iModel}).err = sd.m.(mn{iModel}).err ./ cfg_master.nPleats;
-end
+%% analyze models
+cfg_master.smooth = 1001; % smoothing window (in samples) for error
 
-%%% NEED TO CHANGE PLOTTING STUFF FROM HERE ON %%%
+[~, lambda_spd, ~] = MakeTC_1D(cfg_ttr, sd.TVECc, t_to_reward, sd.TVECc, spd_binned); % speed by time to reward
 
-%% make correlation matrix of GLM predictors
-all_pred = cat(1,base_predictors,LFP_predictors);
-cm = corrcoef(all_pred');
-
-figure;
-imagesc(cm);
-
-set(gca,'XTick',1:11,'XTickLabel',{'x','y','tr','ac','s','d','t','b','lg','hg'});
-set(gca,'YTick',1:11,'YTickLabel',{'x','y','tr','ac','s','d','t','b','lg','hg'});
-
-%% plot the output as a tuning curve
-figure;
-celldiffmean = nanmean(mdiff.full,2);
-
-cellskip = [];
-%cellskip = [6 7 19]; %celldiffmean < 0; %[]; % TODO: figure out why some model diffs end up being NaN -- model fit fail?
-%mdiff.full(cellskip,:) = NaN;
-
-celldiffmean = nanmean(mdiff.full,2);
-subplot(221);
-plot(celldiffmean,'LineWidth',1); hold on; 
-keep = find(celldiffmean > 0);
-plot(keep,celldiffmean(keep),'.g','MarkerSize',20);
-keep = find(celldiffmean < 0);
-plot(keep,celldiffmean(keep),'.r','MarkerSize',20);
-set(gca,'LineWidth',1,'FontSize',18); box off;
-ylabel('Prediction improvement with LFP features added');
-xlabel('cell #');
-
-%mdiffmean = (medfilt1(nanmean(mdiff.full),1001));
-nF = 3001; this_f = ones(nF,1)./nF;
-mdiffmean = conv(nanmean(mdiff.full),this_f,'same');
-
-[~, lambda_mttr, ~] = MakeTC_1D(cfg_ttr, TVECc, t_to_reward, TVECc, mdiffmean);
-[~, lambda_spd, ~] = MakeTC_1D(cfg_ttr, TVECc, t_to_reward, TVECc, spd_binned);
-
-subplot(222)
-[ax h1 h2] = plotyy(cfg_ttr.bins,lambda_mttr,cfg_ttr.bins,lambda_spd);
-hold on;
-set(h1,'LineWidth',2);
-set(gca,'XTick',-5:5,'LineWidth',1,'FontSize',18);
-ylabel('Prediction improvement with LFP features added');
-xlabel('time from reward (s)');
-box off;
-
-subplot(223);
-OUT_tstat(cellskip,:) = NaN;
-imagesc(OUT_tstat); caxis([0 10]);
-set(gca,'XTick',1:11,'XTickLabel',{'i','x','y','tr','ac','s','d','t','b','lg','hg'});
-
-subplot(224);
-imagesc(corrcoef(OUT_tstat(setxor(cellskip,1:length(celldiffmean)),:)));
-set(gca,'XTick',1:11,'XTickLabel',{'i','x','y','tr','ac','s','d','t','b','lg','hg'});
-set(gca,'YTick',1:11,'YTickLabel',{'i','x','y','tr','ac','s','d','t','b','lg','hg'});
-
-%% different freq bands
-for iF = 1:length(fb_names)
-
-    mdiff.(fb_names{iF})(cellskip,:) = NaN;
+for iM = 1:length(mn)
     
-    nF = 3001; this_f = ones(nF,1)./nF;
-    mdiffmean = conv(nanmean(mdiff.(fb_names{iF})),this_f,'same');
-
-    %mdiffmean = (medfilt1(nanmean(mdiff.(fb_names{iF})),1001));
-    [~, this_mttr, ~] = MakeTC_1D(cfg_ttr, TVECc, t_to_reward, TVECc, mdiffmean);
-    [~, this_env, ~] = MakeTC_1D(cfg_ttr, TVECc, t_to_reward, csc.tvec, FF.(fb_names{iF}).env);
-        
+    if strcmp(mn{iM},'baseline')
+        continue;
+    end
+    
     figure;
     
-    subplot(221);
-    plot(nanmean(mdiff.(fb_names{iF}),2));
-    hold on;
-    plot(nanmean(mdiff.(fb_names{iF}),2),'.b','MarkerSize',20);
+    this_err = sd.m.baseline.err - sd.m.(mn{iM}).err;
     
-    subplot(222); % average improvement
-    [ax h1 h2] = plotyy(cfg_ttr.bins,this_mttr,cfg_ttr.bins,this_env);
-    set(h1,'LineWidth',2);
+    % mean error over cells
+    celldiffmean = nanmean(this_err,2);
+    
+    subplot(221);
+    plot(celldiffmean,'LineWidth',1); hold on;
+    keep = find(celldiffmean > 0); plot(keep,celldiffmean(keep),'.g','MarkerSize',20);
+    keep = find(celldiffmean < 0); plot(keep,celldiffmean(keep),'.r','MarkerSize',20);
+    set(gca,'LineWidth',1,'FontSize',18); box off;
+    ylabel('Prediction improvement'); xlabel('cell #');
+    title(mn{iM});
+    
+    % as a tuning curve
+    clear lambda_mttr;
+    this_f = ones(cfg_master.smooth, 1) ./ cfg_master.smooth;
+    mdiffmean = conv(nanmean(this_err), this_f, 'same');
+    [~, lambda_mttr, ~] = MakeTC_1D(cfg_ttr, sd.TVECc, t_to_reward, sd.TVECc, mdiffmean);
+
+    subplot(222)
+    [ax h1 h2] = plotyy(cfg_ttr.bins,lambda_mttr,cfg_ttr.bins,lambda_spd);
     hold on;
-    set(gca,'XTick',-5:5,'LineWidth',1,'FontSize',18);
-    ylabel('Prediction improvement with LFP features added');
-    xlabel('time from reward (s)');
-    title(fb_names{iF});
-    box off;
-
-    nCells = size(mdiff.full, 1);
-    subplot(223); % imagesc across cells
-    for iC = nCells:-1:1
-        fprintf('band %d, filtering cell %d...\n', iF, iC);
-        
-        nF = 1001; this_flt = ones(nF,1)./nF;
-        this_f = conv(mdiff.(fb_names{iF})(iC,:),this_flt,'same');
-
-        %this_f = medfilt1(mdiff.(fb_names{iF})(iC,:), 1001);
-        
-        [~, mdiffm_f(iC,:), ~] = MakeTC_1D(cfg_ttr, TVECc, t_to_reward, TVECc, this_f);
-    end
-    imagesc(cfg_ttr.bins, 1:nCells, mdiffm_f);
+    set(h1,'LineWidth',2);
+    set(gca,'XTick',-5:5,'LineWidth',1,'FontSize',18); box off;
+    ylabel('Prediction improvement'); xlabel('time from reward (s)');
+    
+    % t-stat across neurons -- HOW TO GET THE LABELS FROM THE MODELSPEC?
+    subplot(223);
+    imagesc(sd.m.(mn{iM}).tstat); caxis([0 10]);
     
     subplot(224);
-    % normalized version of above matrix
-    imagesc(cfg_ttr.bins, 1:nCells, zmat(mdiffm_f, 'z'));
+    imagesc(corrcoef(sd.m.(mn{iM}).tstat));
 
 end
 
-%% correlate GLM results with things like spike spectrum, STA spectrum (across cells)
+%% prepare and write output
+if cfg_master.writeOutput
 
-%% correlate tuning curves with GLM results
+    sd.t_to_reward = t_to_reward;
+    sd.cfg = cfg_master;
+    
+    save(cfg_master.output_fn,'sd'); % should add option to save in specified output dir
+    
+end
+    
+%% TODO: correlate GLM results with things like spike spectrum, STA spectrum (across cells)
+
+%% TODO: correlate tuning curves with GLM results
 % why are the TTR GLM fits so "streaky"?
 % is there some correlation between TTR, space, movement onset TCs
 
