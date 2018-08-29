@@ -101,13 +101,16 @@ end
 %
 spd = getLinSpd([],pos);
 
+%
+linpos = ComputeLinPos(pos);
+
 %%% time / nTrials predictor
 p.time = sd.TVECc';
 
 %% loop over all cells 
 for iC = nCells:-1:1
 
-    fprintf('Cell %d\%d...\n',iC,nCells);
+    fprintf('Cell %d/%d...\n',iC,nCells);
     
 % dependent variable: binned spike train
 spk_binned = histc(S.t{iC}, TVECe); spk_binned = spk_binned(1:end - 1);
@@ -140,7 +143,6 @@ p.cif = cif_full(MASTER_keep);
 spk_binned = spk_binned(MASTER_keep);
 
 %%% PREDICTOR: linpos %%%
-linpos = ComputeLinPos(pos);
 cfg_linpos = [];
 cfg_linpos.bins = linspace(min(linpos.data), max(linpos.data), 100);
 cfg_linpos.interp = 'nearest';
