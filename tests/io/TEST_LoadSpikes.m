@@ -6,13 +6,13 @@ function BasicDataLoadingTest(testCase)
 
 testCase.TestData.S1 = LoadSpikes([]);
 
-verifyEqual(testCase,CheckTS(testCase.TestData.S1),1);
+verifyTrue(testCase,CheckTS(testCase.TestData.S1));
 verifyEqual(testCase,length(testCase.TestData.S1.t),92);
 
 cfg = []; cfg.load_questionable_cells = 1;
 testCase.TestData.S2 = LoadSpikes(cfg);
 
-verifyEqual(testCase,CheckTS(testCase.TestData.S2),1);
+verifyTrue(testCase,CheckTS(testCase.TestData.S2));
 verifyEqual(testCase,length(testCase.TestData.S2.t),128);
 end
 
