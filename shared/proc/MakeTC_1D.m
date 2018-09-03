@@ -20,17 +20,17 @@ function [predicted_x, lambda_x, x_binned] = MakeTC_1D(cfg, tvec, data, TVECc, s
 %   sample (simply looked up in lambda_x)
 
 x_interp = interp1(tvec, data, TVECc, cfg.interp); % get variable of interest on common timebase 
-[x_occ_hist, x_binned] = histc(x_interp, cfg.bins); % bin variable of interest
+[x_occ_hist, ~, x_binned] = histcounts(x_interp, cfg.bins); % bin variable of interest
 x_binned(x_interp < cfg.bins(1) | x_interp >= cfg.bins(end)) = NaN;
 
-bin_edges = 0.5:1:length(cfg.bins) + 0.5; % edges for binned version of tuning variable
+bin_edges = 0.5:1:(length(cfg.bins) - 1) + 0.5; % edges for binned version of tuning variable; minus 1 to get centers from previous histcounts use, + 0.5 for adding edge
 
 if islogical(spk_binned) % binned spike train (binary), can use fast method
     x_spk = x_binned(spk_binned); % variable of interest at spike times
-    x_spk_hist = histc(x_spk, bin_edges); x_spk_hist = x_spk_hist(1:end - 1);
+    x_spk_hist = histcounts(x_spk, bin_edges);
     lambda_x = x_spk_hist ./ x_occ_hist;
 else % continuous input, need to average across samples in each bin (slow)
-    for iB = length(cfg.bins):-1:1
+    for iB = (length(cfg.bins) - 1):-1:1 % minus 1 to get centers, not edges
         this_samples = (x_binned == iB);
         lambda_x(iB) = nanmean(spk_binned(this_samples));
     end
