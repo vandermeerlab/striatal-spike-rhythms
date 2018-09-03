@@ -12,10 +12,10 @@ acf(ceil(length(acf)/2)) = 0;
 if isfield(cfg,'sided')
     cut_idx = ceil(length(acf)/2);
     switch cfg.sided
-        case 'one'
+        case 'one' % only uses data from center to end.  
             acf = acf(cut_idx:end);
             tvec = tvec(cut_idx:end);
-        case 'onezero'
+        case 'onezero' % keeps the length for convolution
             acf(1:cut_idx-1) = 0;
     end
 end
