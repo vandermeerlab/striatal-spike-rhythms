@@ -1,4 +1,4 @@
-function rhythmGLMfit(cfg_in)
+function sd = rhythmGLMfit(cfg_in)
 % GLM for spike prediction with LFP features
 %
 % This top-level function fits a number of GLMs to single session spike train data.
