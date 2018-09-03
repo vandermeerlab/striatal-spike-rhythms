@@ -54,4 +54,4 @@ catch e
     
     if isunix, exit(1); end % hack to only quit on CI machine
 end
-if isunix, exit; end
+% if isunix, exit; end

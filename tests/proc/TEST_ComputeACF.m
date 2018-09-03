@@ -12,47 +12,44 @@ spike_rate = 0.5;
 spike_tvec = 0:spike_dt:100;
 spike_data_binary = rand(size(spike_tvec)) > spike_rate;
 
-% spike train (continuous)
-spike_data_cont = rand(size(spike_tvec));
-
-cfg.bins = 0:10:640;
-cfg.interp = 'nearest';
+binsize = 10;
 
 %% test that outputs have the expected size
 cfg_acf = [];
-cfg_acf.binsize = mean(diff(cfg.bins));
+cfg_acf.binsize = binsize;
+[acf,tvec] = ComputeACF(cfg_acf, spike_data_binary); 
 
-[acf,tvec] = ComputeACF(cfg_acf,spike_data_binary); 
 assert(mean(diff(tvec)) == cfg_acf.binsize); % cfg.binsive should be the same as the tvec dt
-assert(tvec(ceil(end/2))==0) % tvec centered on 0
-assert(acf(ceil(end/2))==0) % acf centered on 0
+assert(tvec(ceil(end/2)) == 0) % tvec centered on 0
+assert(acf(ceil(end/2)) == 0) % acf centered on 0
 
 
 cfg_acf = [];
-cfg_acf.binsize = mean(diff(cfg.bins));
+cfg_acf.binsize = binsize;
 cfg_acf.maxlag = 10000; 
-[acf,tvec] = ComputeACF(cfg_acf,spike_data_binary); 
+[acf,tvec] = ComputeACF(cfg_acf, spike_data_binary); 
+
 assert(mean(diff(tvec)) == cfg_acf.binsize); % cfg.binsive should be the same as the tvec dt
-assert(tvec(ceil(end/2))==0) % tvec centered on 0
-assert(acf(ceil(end/2))==0) % acf centered on 0
+assert(tvec(ceil(end/2)) == 0) % tvec centered on 0
+assert(acf(ceil(end/2)) == 0) % acf centered on 0
 
 cfg_acf = [];
-cfg_acf.binsize = mean(diff(cfg.bins));
-cfg_acf.maxlag = 10000; 
+cfg_acf.binsize = binsize;
 cfg_acf.sided = 'one'; 
-[acf,tvec] = ComputeACF(cfg_acf,spike_data_binary); 
+[acf,tvec] = ComputeACF(cfg_acf, spike_data_binary); 
+
 assert(mean(diff(tvec)) == cfg_acf.binsize); % cfg.binsive should be the same as the tvec dt
-assert(tvec(ceil(end/2))~=0) % tvec not centered on 0
-assert(acf(ceil(end/2))~=0) % acf not centered on 0
+assert(tvec(ceil(end/2)) ~= 0) % tvec not centered on 0
+assert(acf(ceil(end/2)) ~= 0) % acf not centered on 0
 
 cfg_acf = [];
-cfg_acf.binsize = mean(diff(cfg.bins));
-cfg_acf.maxlag = 10000; 
+cfg_acf.binsize = binsize;
 cfg_acf.sided = 'onezero'; 
-[acf,tvec] = ComputeACF(cfg_acf,spike_data_binary); 
+[acf,tvec] = ComputeACF(cfg_acf, spike_data_binary); 
+
 assert(mean(diff(tvec)) == cfg_acf.binsize); % cfg.binsive should be the same as the tvec dt
-assert(tvec(ceil(end/2))==0) % tvec not centered on 0
-assert(acf(ceil(end/2))==0) % acf not centered on 0
-assert(all(acf(1:ceil(end/2)) ==0)) % ensure all acf up to tvec 0 are zero
+assert(tvec(ceil(end/2)) == 0) % tvec not centered on 0
+assert(acf(ceil(end/2)) == 0) % acf not centered on 0
+assert(all(acf(1:ceil(end/2)) == 0)) % ensure all acf up to tvec 0 are zero
 
 
