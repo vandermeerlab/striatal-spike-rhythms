@@ -16,6 +16,17 @@ csc = LoadCSC(cfg); csc.data = csc.data-nanmean(csc.data); % may need to locdetr
 %% load data
 S = LoadSpikes([]);
 
+%% Categorize cells and add tetrode depths
+s_out = CategorizeStriatumWave([],S);
+s_out.unit = [s_out.other s_out.msn s_out.fsi];
+s_out.ident = [zeros(1,length(s_out.other)) ones(1,length(s_out.msn)) repmat(2,1,length(s_out.fsi))];
+for iCell = 1:length(S.t)
+    S.usr.cell_type(iCell) = s_out.ident(find(s_out.unit == iCell));
+    tt_idx = findstr(S.label{iCell},'TT');
+    tt_num = S.label{iCell}(tt_idx+2:tt_idx+3);
+    S.usr.tetrodeDepths(iCell) = ExpKeys.tetrodeDepths(str2num(tt_num));
+end
+
 %% chronux spike spectrum -- how can we control the number of frequency bins? seems unwieldy!
 tic
 params = []; 
