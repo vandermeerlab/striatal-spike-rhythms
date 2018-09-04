@@ -6,7 +6,7 @@
 cfg = [];
 cfg.writeOutput = 1;
 cfg.plotOutput = 0;
-cfg.outputDir = 'C:\temp'; % store files here
+cfg.output_dir = 'C:\temp'; % store files here
 cfg.output_prefix = 'R0_'; % prefix filenames with this (identify runs)
 
 cfg.nPleats = 2; % number of pleats (cross-validation runs) per cell
@@ -14,7 +14,7 @@ cfg.kFold = 2; % folds per pleat
 
 %%
 please = [];
-please.rats = {'R117', 'R132'};
+please.rats = {'R117', 'R119', 'R132'};
 fc = getDataPath(please);
 
 %%
