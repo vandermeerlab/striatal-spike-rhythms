@@ -62,9 +62,12 @@ cfg_master.f.lowGamma = [40 65];
 cfg_master.f.highGamma = [70 100];
 cfg_master.nPleats = 2;
 cfg_master.kFold = 2;
+cfg_master.plotOutput = 1;
 cfg_master.writeOutput = 0;
 cfg_master.output_prefix = 'R0_';
 cfg_master.output_dir = 'C:\temp';
+
+cfg_master = ProcessConfig(cfg_master,cfg_in);
 
 cfg_phi = []; % LFP features
 cfg_phi.dt = median(diff(csc.tvec));
@@ -249,53 +252,56 @@ for iC = nCells:-1:1
 end % over cells
 
 %% analyze models
-cfg_master.smooth = 501; % smoothing window (in samples) for error
-
-[~, lambda_spd, ~] = MakeTC_1D(cfg_ttr, sd.TVECc, t_to_reward, sd.TVECc, spd_binned); % speed by time to reward
-
-for iM = 1:length(mn)
+if cfg_master.plotOutput
     
-    if strcmp(mn{iM},'baseline')
-        continue;
+    cfg_master.smooth = 501; % smoothing window (in samples) for error
+    
+    [~, lambda_spd, ~] = MakeTC_1D(cfg_ttr, sd.TVECc, t_to_reward, sd.TVECc, spd_binned); % speed by time to reward
+    
+    for iM = 1:length(mn)
+        
+        if strcmp(mn{iM},'baseline')
+            continue;
+        end
+        
+        figure;
+        
+        this_err = sd.m.baseline.err - sd.m.(mn{iM}).err;
+        
+        % mean error over cells
+        celldiffmean = nanmean(this_err,2);
+        
+        subplot(221);
+        plot(celldiffmean,'LineWidth',1); hold on;
+        keep = find(celldiffmean > 0); plot(keep,celldiffmean(keep),'.g','MarkerSize',20);
+        keep = find(celldiffmean < 0); plot(keep,celldiffmean(keep),'.r','MarkerSize',20);
+        set(gca,'LineWidth',1,'FontSize',18); box off;
+        ylabel('Prediction improvement'); xlabel('cell #');
+        title(mn{iM});
+        
+        % as a tuning curve
+        clear lambda_mttr;
+        this_f = ones(cfg_master.smooth, 1) ./ cfg_master.smooth;
+        mdiffmean = conv(nanmean(this_err), this_f, 'same');
+        [~, lambda_mttr, ~] = MakeTC_1D(cfg_ttr, sd.TVECc, t_to_reward, sd.TVECc, mdiffmean);
+        
+        subplot(222)
+        [ax h1 h2] = plotyy(cfg_ttr.bins,lambda_mttr,cfg_ttr.bins,lambda_spd);
+        hold on;
+        set(h1,'LineWidth',2);
+        set(gca,'XTick',-5:5,'LineWidth',1,'FontSize',18); box off;
+        ylabel('Prediction improvement'); xlabel('time from reward (s)');
+        
+        % t-stat across neurons -- HOW TO GET THE LABELS FROM THE MODELSPEC?
+        subplot(223);
+        imagesc(sd.m.(mn{iM}).tstat); caxis([0 10]);
+        
+        subplot(224);
+        imagesc(corrcoef(sd.m.(mn{iM}).tstat));
+        
+        % could show each cell's model improvement across time
+        
     end
-    
-    figure;
-    
-    this_err = sd.m.baseline.err - sd.m.(mn{iM}).err;
-    
-    % mean error over cells
-    celldiffmean = nanmean(this_err,2);
-    
-    subplot(221);
-    plot(celldiffmean,'LineWidth',1); hold on;
-    keep = find(celldiffmean > 0); plot(keep,celldiffmean(keep),'.g','MarkerSize',20);
-    keep = find(celldiffmean < 0); plot(keep,celldiffmean(keep),'.r','MarkerSize',20);
-    set(gca,'LineWidth',1,'FontSize',18); box off;
-    ylabel('Prediction improvement'); xlabel('cell #');
-    title(mn{iM});
-    
-    % as a tuning curve
-    clear lambda_mttr;
-    this_f = ones(cfg_master.smooth, 1) ./ cfg_master.smooth;
-    mdiffmean = conv(nanmean(this_err), this_f, 'same');
-    [~, lambda_mttr, ~] = MakeTC_1D(cfg_ttr, sd.TVECc, t_to_reward, sd.TVECc, mdiffmean);
-
-    subplot(222)
-    [ax h1 h2] = plotyy(cfg_ttr.bins,lambda_mttr,cfg_ttr.bins,lambda_spd);
-    hold on;
-    set(h1,'LineWidth',2);
-    set(gca,'XTick',-5:5,'LineWidth',1,'FontSize',18); box off;
-    ylabel('Prediction improvement'); xlabel('time from reward (s)');
-    
-    % t-stat across neurons -- HOW TO GET THE LABELS FROM THE MODELSPEC?
-    subplot(223);
-    imagesc(sd.m.(mn{iM}).tstat); caxis([0 10]);
-    
-    subplot(224);
-    imagesc(corrcoef(sd.m.(mn{iM}).tstat));
-
-    % could show each cell's model improvement across time
-    
 end
 
 %% prepare and write output
@@ -305,7 +311,12 @@ if cfg_master.writeOutput
     sd.t_to_reward = t_to_reward;
     sd.cfg = cfg_master;
     
-    save(cfg_master.output_prefix,'sd'); % should add option to save in specified output dir
+    [~, fp, ~] = fileparts(pwd);
+    
+    pushdir(cfg_master.output_dir);
+    fn_out = cat(2,cfg_master.output_prefix, fp, '_sd.mat');
+    save(fn_out,'sd'); % should add option to save in specified output dir
+    popdir;
     
 end
   
