@@ -33,6 +33,9 @@ cfg = ProcessConfig(cfg_def,cfg_in,mfun);
 if ispc
     machinename = getenv('COMPUTERNAME');
     filesep = '\';
+elseif ismac
+    machinename = getenv('USER');
+    filesep = '/';
 else
     machinename = getenv('HOSTNAME');
     filesep = '/';
@@ -41,7 +44,7 @@ end
 % Choose base data path based on machine name.
 switch machinename
     
-    case 'ISIDRO'
+    case {'ISIDRO','MVDMLAB-PERSEUS','ODYSSEUS'}
         base_fp = 'C:\data\';
     case {'EQUINOX','BERGKAMP'}
         base_fp = 'D:\data\';
