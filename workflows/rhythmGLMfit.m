@@ -64,8 +64,12 @@ cfg_master.nPleats = 2;
 cfg_master.kFold = 2;
 cfg_master.plotOutput = 1;
 cfg_master.writeOutput = 0;
+cfg_master.writeFullError = 0; % write full nSamples x nCells x nModels error for each model (NOTE: takes up to 1GB per session)
+cfg_master.smooth = 501; % smoothing window (in samples) for error
 cfg_master.output_prefix = 'R0_';
 cfg_master.output_dir = 'C:\temp';
+cfg_master.ttr_bins = [-5:0.1:5]; % time bin edges for time-to-reward tuning curves
+cfg_master.linposBins = 101; % number of position bins (is autoscaled for each session)
 
 cfg_master = ProcessConfig(cfg_master,cfg_in);
 
@@ -96,7 +100,7 @@ sd.TVECc = TVECe(1:end-1)+cfg_master.dt/2; % centers
 
 % time-to-reward variable is used to restrict samples
 t_to_reward = ComputeTTR(reward_t,sd.TVECc);
-cfg_ttr = []; cfg_ttr.interp = 'nearest'; cfg_ttr.bins = [-5:0.1:5];
+cfg_ttr = []; cfg_ttr.interp = 'nearest'; cfg_ttr.bins = cfg_master.ttr_bins;
 spk_binned = logical(zeros(size(sd.TVECc))); % dummy spike train just to get binned TTR
 [ttr, lambda_ttr, ttr_binned] = MakeTC_1D(cfg_ttr, sd.TVECc, t_to_reward, sd.TVECc, spk_binned);
 
@@ -157,6 +161,9 @@ for iC = nCells:-1:1
     %k = gausskernel(50,2); % smoothing works too, should make into option
     %spk_binned = conv2(spk_binned,k,'same');
     
+    %%% could consider removing cell if not enough spikes at this point
+    % but that means initializing the tstat variable
+    
     %%% PREDICTOR: conditional intensity function
     % note we need to do this before restricting the spike train to avoid weird breaks
     cif = conv(spk_binned,[0 0 0 1 1],'same'); % 2 ms refractory period
@@ -182,7 +189,7 @@ for iC = nCells:-1:1
     
     %%% PREDICTOR: linpos %%%
     cfg_linpos = [];
-    cfg_linpos.bins = linspace(min(linpos.data), max(linpos.data), 100);
+    cfg_linpos.bins = linspace(min(linpos.data), max(linpos.data), cfg_master.linposBins);
     cfg_linpos.interp = 'nearest';
     [predicted_linpos, lambda_linpos, linpos_binned] = MakeTC_1D(cfg_linpos, linpos.tvec, linpos.data, sd.TVECc, spk_binned);
     p.linpos = predicted_linpos' - nanmean(predicted_linpos);
@@ -235,7 +242,9 @@ for iC = nCells:-1:1
                 % refine model by throwing out ineffective predictors
                 toss = this_m.Coefficients.Row(abs(this_m.Coefficients.tStat) < 2);
                 for iToss = 1:length(toss)
-                   this_m.removeTerms(toss{iToss}); 
+                    if ~strcmp('(Intercept)',toss{iToss}) % can't remove intercept
+                        this_m.removeTerms(toss{iToss});
+                    end
                 end
 
                 % test it and add resulting error to running total
@@ -252,9 +261,9 @@ for iC = nCells:-1:1
 end % over cells
 
 %% analyze models
+this_f = ones(cfg_master.smooth, 1) ./ cfg_master.smooth;
+
 if cfg_master.plotOutput
-    
-    cfg_master.smooth = 501; % smoothing window (in samples) for error
     
     [~, lambda_spd, ~] = MakeTC_1D(cfg_ttr, sd.TVECc, t_to_reward, sd.TVECc, spd_binned); % speed by time to reward
     
@@ -281,7 +290,6 @@ if cfg_master.plotOutput
         
         % as a tuning curve
         clear lambda_mttr;
-        this_f = ones(cfg_master.smooth, 1) ./ cfg_master.smooth;
         mdiffmean = conv(nanmean(this_err), this_f, 'same');
         [~, lambda_mttr, ~] = MakeTC_1D(cfg_ttr, sd.TVECc, t_to_reward, sd.TVECc, mdiffmean);
         
@@ -311,6 +319,48 @@ if cfg_master.writeOutput
     sd.t_to_reward = t_to_reward;
     sd.cfg = cfg_master;
     
+    % compute difference TCs for each model and each cell
+    for iM = 1:length(mn)
+    
+        % get error diff for this model
+        this_err = sd.m.baseline.err - sd.m.(mn{iM}).err;
+        
+        for iC = nCells:-1:1
+            
+            % smooth
+            this_cell_err = this_err(iC,:);
+            this_cell_err = conv(this_cell_err, this_f, 'same');
+            
+            % TTR
+            [~, sd.m.(mn{iM}).ttr_err(iC,:), ~] = MakeTC_1D(cfg_ttr, sd.TVECc, sd.t_to_reward, sd.TVECc, this_cell_err);
+            
+            % space
+            [~, sd.m.(mn{iM}).linpos_err(iC,:), ~] = MakeTC_1D(cfg_linpos, sd.linpos.tvec, sd.linpos.data, sd.TVECc, this_cell_err);
+   
+        end % loop over cells
+    
+    end % loop over models
+    
+    % consider also saving the distribution of LFP envelopes of interest
+    for iF = 1:length(fb_names)
+    
+        this_env = FF.(fb_names{iF}).env;
+        [~, sd.env_ttr.(fb_names{iF}), ~] = MakeTC_1D(cfg_ttr, sd.TVECc, sd.t_to_reward, csc.tvec, this_env);
+        [~, sd.env_linpos.(fb_names{iF}), ~] = MakeTC_1D(cfg_linpos, sd.linpos.tvec, sd.linpos.data, csc.tvec, this_env);     
+        
+    end % loop over freq bands
+    
+    % if requested, save full error variables
+    if cfg_master.writeFullError
+        fprintf('\n*** WARNING: saving full error variables in output! (may take up GB''s of space!\n\n');
+    else % set error fields to average across samples
+        sd.m.baseline.err = nanmean(sd.m.baseline.err, 2);
+        for iM = 1:length(mn)
+            sd.m.(mn{iM}).err = nanmean(sd.m.(mn{iM}).err, 2);
+        end
+    end
+    
+    % write
     [~, fp, ~] = fileparts(pwd);
     
     pushdir(cfg_master.output_dir);

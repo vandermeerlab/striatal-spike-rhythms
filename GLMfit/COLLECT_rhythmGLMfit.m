@@ -23,12 +23,9 @@ nModels = length(cfg.models);
 
 ALL_avgErr = nan(nModels, cfg.nMaxCells); % average error for each cell
 
-ALL_ttrErr = nan(nModels, cfg.nTimeBins, cfg.nMaxCells); % nTimeBins x nCells matrix (time to reward-binned model improvement)
-ALL_spaceErr = nan(nModels, cfg.nSpaceBins, cfg.nMaxCells); % nLocBins x nCells matrix (linearized position)
-ALL_tstat = nan(nModels, 16, cfg.nMaxCells); % nVariables x nCells matrix (t-stats)
-
-%for iM = 1:nModels
-%end % over models
+ALL_ttrErr = nan(nModels, cfg.nMaxCells, cfg.nTimeBins); % time to reward-binned model improvement
+ALL_spaceErr = nan(nModels, cfg.nMaxCells, cfg.nSpaceBins); % linearized position-binned model improvement
+ALL_tstat = nan(nModels, cfg.nMaxCells, 16); % t-stats
 
 % counters
 cellCount = 1; % MATLAB indexing starts at 1
@@ -38,27 +35,29 @@ cellCount = 1; % MATLAB indexing starts at 1
 for iS = 1:nSessions
 
     load(fd{iS});
-    baseline_err = sd.m.baseline.err;
     
     % indexing for populating ALL matrices
-    nCells = size(baseline_err, 1);
+    nCells = length(sd.S.t);
     start_idx = cellCount; end_idx = cellCount + nCells - 1;
     
     for iM = 1:nModels
     
-        this_diff = baseline_err - sd.m.(cfg.models{iM}).err; % error difference
-        
-        ALL_avgErr(iM,start_idx:end_idx) = nanmean(this_diff, 2);
+        % average error
+        this_diff = sd.m.baseline.err - sd.m.(cfg.models{iM}).err;
+        ALL_avgErr(iM, start_idx:end_idx) = this_diff;
         
         % ttr err
-        this_f = ones(cfg_master.smooth, 1) ./ cfg_master.smooth;
-        mdiffmean = conv(nanmean(this_err), this_f, 'same');
-        [~, lambda_mttr, ~] = MakeTC_1D(cfg_ttr, sd.TVECc, t_to_reward, sd.TVECc, mdiffmean);
+        ALL_ttrErr(iM, start_idx:end_idx, :) = sd.m.(cfg.models{iM}).ttr_err;
         
         % space err 
+        ALL_spaceErr(iM, start_idx:end_idx, :) = sd.m.(cfg.models{iM}).linpos_err;
         
         % t-stats
-           
+        nT = length(sd.m.(cfg.models{iM}).varnames);
+        this_t = sd.m.(cfg.models{iM}).tstat(:,2:end);
+        
+        ALL_tstat(iM, start_idx:end_idx, 1:size(this_t,2)) = this_t;
+        ALL_tstat_varnames{iM} = sd.m.(cfg.models{iM}).varnames;
         
     end % of models
     
@@ -67,3 +66,60 @@ for iS = 1:nSessions
 end
 
 %% plot
+for iM = 1:nModels
+    
+    figure;
+    
+    % average improvement across cells
+    subplot(221);
+    this_err = ALL_avgErr(iM,:);
+    
+    plot(this_err,'LineWidth',1); hold on;
+    keep = find(this_err > 0); plot(keep,this_err(keep),'.g','MarkerSize',20);
+    keep = find(this_err < 0); plot(keep,this_err(keep),'.r','MarkerSize',20);
+    set(gca,'LineWidth',1,'FontSize',18); box off;
+    ylabel('Prediction improvement'); xlabel('cell #');
+    title(cat(2,'Model ', cfg.models{iM}));
+    
+    % t-stat across cells
+    subplot(222);
+    
+    this_tstat = sq(ALL_tstat(iM,:,:));
+    this_vars = ALL_tstat_varnames{iM}; nVars = length(ALL_tstat_varnames{iM});
+    this_tstat = this_tstat(1:cellCount-1,1:nVars);
+    
+    imagesc(this_tstat); colorbar; caxis([0 20]);
+    
+    trunc = @(x) x(1:2); lbl = cellfun(trunc, this_vars, 'UniformOutput', false);
+    set(gca,'LineWidth',1,'FontSize',12,'XTick',1:nVars,'XTickLabel',lbl); box off;
+    ylabel('cell #');
+    
+    % t-stat correlations
+    subplot(223);
+    
+    tcorr = corrcoef(this_tstat);
+    imagesc(tcorr);
+    set(gca,'LineWidth',1,'FontSize',12,'XTick',1:nVars,'XTickLabel',lbl,'YTick',1:nVars,'YTickLabel',lbl); box off;
+    
+    figure;
+    
+    this_ttr = sq(ALL_ttrErr(iM,:,:));
+    
+    subplot(221);
+    plot(nanmean(this_ttr));
+    
+    title(cat(2,'Model ', cfg.models{iM}));
+   
+    subplot(223);
+    imagesc(this_ttr(1:cellCount - 1,:));
+    
+    %
+    this_space = sq(ALL_spaceErr(iM,:,:));
+    
+    subplot(222);
+    plot(nanmean(this_space));
+    
+    subplot(224);
+    imagesc(this_space(1:cellCount - 1,:));
+    
+end
