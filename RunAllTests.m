@@ -60,4 +60,4 @@ catch e
     if strcmp(hostname,'mvdmlab-athena'), exit(1); end % hack to only quit on CI machine
 end
 % if running on CI machine, exit
-if strcmp(hostname,'mvdmlab-athena'), exit(1); end 
+if strcmp(hostname,'mvdmlab-athena'), exit; end 
