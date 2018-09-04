@@ -5,6 +5,7 @@ import matlab.unittest.plugins.ToFile;
 import('matlab.unittest.plugins.CodeCoveragePlugin');
 import('matlab.unittest.plugins.codecoverage.CoberturaFormat');
 
+% pathsep
 if ispc
     pathsep = ';';
 elseif isunix
@@ -12,6 +13,9 @@ elseif isunix
 else
    error ('Undefined path separator.');
 end
+
+% find out hostname
+[~, hostname] = system('hostname'); hostname = hostname(1:end - 1);
 
 try
     % set up paths
@@ -52,6 +56,8 @@ catch e
     fprintf('\n*********************\nRunAllTests.m failed!\n*********************\n');
     disp(getReport(e,'extended'));
     
-    if isunix, exit(1); end % hack to only quit on CI machine
+
+    if strcmp(hostname,'mvdmlab-athena'), exit(1); end % hack to only quit on CI machine
 end
-% if isunix, exit; end
+% if running on CI machine, exit
+if strcmp(hostname,'mvdmlab-athena'), exit(1); end 
