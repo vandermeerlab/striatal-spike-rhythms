@@ -188,7 +188,7 @@ for iC = nCells:-1:1
     
     %%% SKIP CELL IF NOT ENOUGH NEURONS
     if sum(spk_binned) <= cfg_master.nMinCells
-       fprintf('\n\n*** CELL SKIPPED - INSUFFICIENT CELLS ***\n\n');
+       fprintf('\n\n*** CELL SKIPPED - INSUFFICIENT SPIKES ***\n\n');
        continue;
     end
     
