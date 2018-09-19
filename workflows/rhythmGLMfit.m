@@ -69,7 +69,7 @@ cfg_master.output_prefix = 'R0_';
 cfg_master.output_dir = 'C:\temp';
 cfg_master.ttr_bins = [-5:0.1:5]; % time bin edges for time-to-reward tuning curves
 cfg_master.linposBins = 101; % number of position bins (is autoscaled for each session)
-cfg_master.nMinCells = 100;
+cfg_master.nMinSpikes = 100; % minimum number of spikes needed to include cell
 
 cfg_master = ProcessConfig(cfg_master,cfg_in);
 
@@ -112,10 +112,13 @@ sd.TVECc = sd.TVECc(MASTER_keep);
 nMaxVars = 15; % only used for initializing t-stat matrix
 % baseline model MUST be defined first or things will break!
 sd.m.baseline.modelspec = 'spk ~ 1 + linpos + spd + ttr + cif';
-%sd.m.gphi.modelspec = 'spk ~ 1 + linpos + spd + ttr + cif + lowGamma_phase + highGamma_phase';
-%sd.m.tphi.modelspec = 'spk ~ 1 + linpos + spd + ttr + cif + theta_phase';
+sd.m.dphi.modelspec = 'spk ~ 1 + linpos + spd + ttr + cif + delta_phase';
+sd.m.tphi.modelspec = 'spk ~ 1 + linpos + spd + ttr + cif + theta_phase';
+sd.m.bphi.modelspec = 'spk ~ 1 + linpos + spd + ttr + cif + beta_phase';
+sd.m.lgphi.modelspec = 'spk ~ 1 + linpos + spd + ttr + cif + lowGamma_phase';
+sd.m.hgphi.modelspec = 'spk ~ 1 + linpos + spd + ttr + cif + highGamma_phase';
 sd.m.allphi.modelspec = 'spk ~ 1 + linpos + spd + ttr + cif + delta_phase + beta_phase + theta_phase + lowGamma_phase + highGamma_phase';
-sd.m.all.modelspec = 'spk ~ 1 + linpos + spd + ttr + cif + delta_phase + beta_phase + theta_phase + lowGamma_phase + highGamma_phase + delta_env + beta_env + theta_env + lowGamma_env + highGamma_env';
+%sd.m.all.modelspec = 'spk ~ 1 + linpos + spd + ttr + cif + delta_phase + beta_phase + theta_phase + lowGamma_phase + highGamma_phase + delta_env + beta_env + theta_env + lowGamma_env + highGamma_env';
 
 % init error vars
 mn = fieldnames(sd.m);
@@ -187,7 +190,7 @@ for iC = nCells:-1:1
     spk_binned = spk_binned(MASTER_keep);
     
     %%% SKIP CELL IF NOT ENOUGH NEURONS
-    if sum(spk_binned) <= cfg_master.nMinCells
+    if sum(spk_binned) <= cfg_master.nMinSpikes
        fprintf('\n\n*** CELL SKIPPED - INSUFFICIENT SPIKES ***\n\n');
        continue;
     end
@@ -323,6 +326,7 @@ if cfg_master.writeOutput
 
     sd.linpos = linpos;
     sd.t_to_reward = t_to_reward;
+    sd.spd = spd;
     sd.cfg = cfg_master;
     
     % compute difference TCs for each model and each cell
