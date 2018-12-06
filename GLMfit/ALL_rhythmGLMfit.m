@@ -8,6 +8,7 @@ cfg.writeOutput = 1;
 cfg.plotOutput = 0;
 cfg.output_dir = 'C:\temp'; % store files here
 cfg.output_prefix = 'R0_'; % prefix filenames with this (identify runs)
+cfg_master.nMinSpikes = 200;
 
 cfg.nPleats = 2; % number of pleats (cross-validation runs) per cell
 cfg.kFold = 2; % folds per pleat

@@ -38,7 +38,6 @@ LoadExpKeys;
 
 % spikes
 sd.S = LoadSpikes([]);
-sd.S = KeepCells(sd.S); % note this has a hardcoded parameter (500 spikes minimum)
 nCells = length(sd.S.t);
 
 % LFP
@@ -70,6 +69,7 @@ cfg_master.output_prefix = 'R0_';
 cfg_master.output_dir = 'C:\temp';
 cfg_master.ttr_bins = [-5:0.1:5]; % time bin edges for time-to-reward tuning curves
 cfg_master.linposBins = 101; % number of position bins (is autoscaled for each session)
+cfg_master.nMinSpikes = 100; % minimum number of spikes needed to include cell
 
 cfg_master = ProcessConfig(cfg_master,cfg_in);
 
@@ -109,17 +109,22 @@ MASTER_keep = ~isnan(ttr); % NEED THIS TO RESTRICT BINNED SPIKE TRAIN LATER!
 t_to_reward = t_to_reward(MASTER_keep);
 sd.TVECc = sd.TVECc(MASTER_keep);
 
+nMaxVars = 15; % only used for initializing t-stat matrix
 % baseline model MUST be defined first or things will break!
 sd.m.baseline.modelspec = 'spk ~ 1 + linpos + spd + ttr + cif';
-%sd.m.gphi.modelspec = 'spk ~ 1 + linpos + spd + ttr + cif + lowGamma_phase + highGamma_phase';
-%sd.m.tphi.modelspec = 'spk ~ 1 + linpos + spd + ttr + cif + theta_phase';
+sd.m.dphi.modelspec = 'spk ~ 1 + linpos + spd + ttr + cif + delta_phase';
+sd.m.tphi.modelspec = 'spk ~ 1 + linpos + spd + ttr + cif + theta_phase';
+sd.m.bphi.modelspec = 'spk ~ 1 + linpos + spd + ttr + cif + beta_phase';
+sd.m.lgphi.modelspec = 'spk ~ 1 + linpos + spd + ttr + cif + lowGamma_phase';
+sd.m.hgphi.modelspec = 'spk ~ 1 + linpos + spd + ttr + cif + highGamma_phase';
 sd.m.allphi.modelspec = 'spk ~ 1 + linpos + spd + ttr + cif + delta_phase + beta_phase + theta_phase + lowGamma_phase + highGamma_phase';
-sd.m.all.modelspec = 'spk ~ 1 + linpos + spd + ttr + cif + delta_phase + beta_phase + theta_phase + lowGamma_phase + highGamma_phase + delta_env + beta_env + theta_env + lowGamma_env + highGamma_env';
+%sd.m.all.modelspec = 'spk ~ 1 + linpos + spd + ttr + cif + delta_phase + beta_phase + theta_phase + lowGamma_phase + highGamma_phase + delta_env + beta_env + theta_env + lowGamma_env + highGamma_env';
 
 % init error vars
 mn = fieldnames(sd.m);
 for iM = 1:length(mn)
    sd.m.(mn{iM}).err = zeros(nCells, length(sd.TVECc)); % needs to be zeros because error output will be added to this
+   sd.m.(mn{iM}).tstat = nan(nCells, nMaxVars);
 end
 
 % define training and testing sets
@@ -161,9 +166,6 @@ for iC = nCells:-1:1
     %k = gausskernel(50,2); % smoothing works too, should make into option
     %spk_binned = conv2(spk_binned,k,'same');
     
-    %%% could consider removing cell if not enough spikes at this point
-    % but that means initializing the tstat variable
-    
     %%% PREDICTOR: conditional intensity function
     % note we need to do this before restricting the spike train to avoid weird breaks
     cif = conv(spk_binned,[0 0 0 1 1],'same'); % 2 ms refractory period
@@ -186,6 +188,16 @@ for iC = nCells:-1:1
     
     %%% now can restrict spike train
     spk_binned = spk_binned(MASTER_keep);
+    
+    %%% SKIP CELL IF NOT ENOUGH NEURONS
+    if sum(spk_binned) <= cfg_master.nMinSpikes
+       fprintf('\n\n*** CELL SKIPPED - INSUFFICIENT SPIKES ***\n\n');
+       continue;
+    end
+    
+    %%% PREDICTOR: time to reward
+    [ttr, lambda_ttr, ttr_binned] = MakeTC_1D(cfg_ttr, sd.TVECc, t_to_reward, sd.TVECc, spk_binned);
+    p.ttr = ttr' - nanmean(ttr);
     
     %%% PREDICTOR: linpos %%%
     cfg_linpos = [];
@@ -215,9 +227,6 @@ for iC = nCells:-1:1
         end
     end
     
-    %%% PREDICTOR: time to reward
-    [ttr, lambda_ttr, ttr_binned] = MakeTC_1D(cfg_ttr, sd.TVECc, t_to_reward, sd.TVECc, spk_binned);
-    p.ttr = ttr' - nanmean(ttr);
 
     %% x-val loop
     p.spk = spk_binned;
@@ -236,7 +245,7 @@ for iC = nCells:-1:1
                 
                 % train initial model
                 this_m = fitglm(p(tr_idx,:), sd.m.(mn{iModel}).modelspec, 'Distribution', 'binomial')
-                sd.m.(mn{iModel}).tstat(iC,:) = this_m.Coefficients.tStat; % should initialize this, but that's a pain
+                sd.m.(mn{iModel}).tstat(iC, 1:length(this_m.Coefficients.tStat)) = this_m.Coefficients.tStat; % should initialize this, but that's a pain
                 sd.m.(mn{iModel}).varnames = this_m.PredictorNames;
                 
                 % refine model by throwing out ineffective predictors
@@ -317,6 +326,7 @@ if cfg_master.writeOutput
 
     sd.linpos = linpos;
     sd.t_to_reward = t_to_reward;
+    sd.spd = spd;
     sd.cfg = cfg_master;
     
     % compute difference TCs for each model and each cell
