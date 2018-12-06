@@ -3,14 +3,15 @@
 clear
 %addpath(genpath('D:\My_Documents\GitHub\striatal-spike-rhythms\chronux_2_12\spectral_analysis'));
 
-%fd = {'D:\data\adrlab\R117\R117-2007-06-20'};
-fd = {'C:\data\adrlab\R117-2007-06-20'};
-fd = {'C:\data\R042\R042-2013-08-17'};
+% fd = {'D:\data\adrlab\R117\R117-2007-06-20'};
+% fd = {'C:\data\adrlab\R117-2007-06-20'};
+% fd = {'C:\data\R042\R042-2013-08-17'};
+fd = {'/Volumes/Fenrir/Str_rhythms/R117-2007-06-20'}; % EC dta location
 cd(fd{1});
 
 LoadExpKeys;
-%cfg = []; cfg.fc = ExpKeys.goodGamma_vStr;
-cfg = []; cfg.fc = ExpKeys.goodTheta;
+cfg = []; cfg.fc = ExpKeys.goodGamma_vStr;
+% cfg = []; cfg.fc = ExpKeys.goodTheta;
 csc = LoadCSC(cfg); csc.data = csc.data-nanmean(csc.data); % may need to locdetrend
 
 %% load data
@@ -161,12 +162,12 @@ xval = 1:100;
 keep = pval < 0.05;
 hold on; plot(xval(keep),cc(keep),'.b','MarkerSIze',20);
 %%
-function [acf,tvec] = ComputeACF(cfg,spk_binned)
-if isfield(cfg,'maxlag')
-    [acf,tvec] = xcorr(spk_binned,spk_binned,cfg.maxlag);
-else
-    [acf,tvec] = xcorr(spk_binned,spk_binned);
-end
-tvec = tvec.*cfg.binsize;
-acf(ceil(length(acf)/2)) = 0;
-end
+% function [acf,tvec] = ComputeACF(cfg,spk_binned)
+% if isfield(cfg,'maxlag')
+%     [acf,tvec] = xcorr(spk_binned,spk_binned,cfg.maxlag);
+% else
+%     [acf,tvec] = xcorr(spk_binned,spk_binned);
+% end
+% tvec = tvec.*cfg.binsize;
+% acf(ceil(length(acf)/2)) = 0;
+% end
