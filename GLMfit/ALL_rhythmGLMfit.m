@@ -15,7 +15,7 @@ cfg.kFold = 2; % folds per pleat
 
 %%
 please = [];
-please.rats = {'R117', 'R119', 'R132'};
+please.rats = {'R119', 'R132'}; %{'R117', 'R119', 'R132'};
 fc = getDataPath(please);
 
 %%
