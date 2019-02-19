@@ -73,6 +73,18 @@ else
 end
 csc = LoadCSC(cfg);
 
+% LFP - vStr
+if isfield(ExpKeys,'goodTheta')
+    if iscell(ExpKeys.goodTheta)
+        cfg = []; cfg.fc = ExpKeys.goodTheta(1);
+    else
+        cfg = []; cfg.fc = {ExpKeys.goodTheta};
+    end
+else
+    error('Don''t know what HC LFP to load.');
+end
+csc_hc = LoadCSC(cfg);
+
 cfg_phi = []; % LFP features
 cfg_phi.dt = median(diff(csc.tvec));
 cfg_phi.ord = 100;
@@ -138,14 +150,8 @@ sd.TVECc = sd.TVECc(MASTER_keep);
 
 nMaxVars = 15; % only used for initializing t-stat matrix
 % baseline model MUST be defined first or things will break!
-sd.m.baseline.modelspec = 'spk ~ 1 + linpos + spd + ttr + cif';
-sd.m.dphi.modelspec = 'spk ~ 1 + linpos + spd + ttr + cif + delta_phase';
-sd.m.tphi.modelspec = 'spk ~ 1 + linpos + spd + ttr + cif + theta_phase';
-sd.m.bphi.modelspec = 'spk ~ 1 + linpos + spd + ttr + cif + beta_phase';
-sd.m.lgphi.modelspec = 'spk ~ 1 + linpos + spd + ttr + cif + lowGamma_phase';
-sd.m.hgphi.modelspec = 'spk ~ 1 + linpos + spd + ttr + cif + highGamma_phase';
-sd.m.allphi.modelspec = 'spk ~ 1 + linpos + spd + ttr + cif + delta_phase + beta_phase + theta_phase + lowGamma_phase + highGamma_phase';
-%sd.m.all.modelspec = 'spk ~ 1 + linpos + spd + ttr + cif + delta_phase + beta_phase + theta_phase + lowGamma_phase + highGamma_phase + delta_env + beta_env + theta_env + lowGamma_env + highGamma_env';
+sd.m.baseline.modelspec = 'spk ~ 1 + linpos + spd + ttr + cif + delta_phase + beta_phase + theta_phase + lowGamma_phase + highGamma_phase';
+sd.m.hctheta.modelspec = 'spk ~ 1 + linpos + spd + ttr + cif + delta_phase + beta_phase + theta_phase + lowGamma_phase + highGamma_phase + hctheta_phase';
 
 % init error vars
 mn = fieldnames(sd.m);
@@ -159,7 +165,7 @@ for iPleat = cfg_master.nPleats:-1:1
     C{iPleat} = cvpartition(length(sd.TVECc), 'KFold', cfg_master.kFold);
 end
 
-% LFP features
+% LFP features - vStr
 disp('Computing session-wide LFP features...');
 fb_names = fieldnames(cfg_master.f);
 cfg_phi.debug = 0;
@@ -171,6 +177,11 @@ for iF = 1:length(fb_names)
     [FF.(fb_names{iF}).phase, FF.(fb_names{iF}).env] = ComputePhase(cfg_phi, csc);
     
 end
+
+% LFP features - HC
+cfg_phi.fpass = cfg_master.f.theta;
+[FF.hctheta.phase, FF.hctheta.env] = ComputePhase(cfg_phi, csc_hc);
+fb_names = cat(1, fb_names, {'hctheta'});
 
 %
 spd = getLinSpd([],pos);

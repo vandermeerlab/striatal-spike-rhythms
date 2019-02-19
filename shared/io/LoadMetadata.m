@@ -19,7 +19,11 @@ elseif length(fn) > 1
     disp('metadata not loaded')
 else
     load(fn{1})
-    assignin('caller','metadata',metadata)
+    try
+        assignin('caller','metadata',metadata)
+    catch
+       assignin('caller','metadata',Metadata) 
+    end
 end
 
 end

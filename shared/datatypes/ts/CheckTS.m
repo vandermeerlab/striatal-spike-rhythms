@@ -43,7 +43,7 @@ else
         % check that all t are column vectors
         for iT = 1:length(ts_in.t)
             if ~iscolumn(ts_in.t{iT})
-                pass_flag = False;
+                pass_flag = false;
                 fprintf('FAIL%s by CheckTS: all contents of ts_in.t must be column vectors.\n',in_mfun);
             end
         end

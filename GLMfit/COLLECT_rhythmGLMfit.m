@@ -12,7 +12,7 @@ cfg.nSpaceBins = 100;
 %%
 pushdir(cfg.inputDir);
 
-fd = FindFiles(cat(2,cfg.input_prefix,'R*.mat'));
+fd = FindFiles(cat(2,cfg.input_prefix,'R149*.mat'));
 nSessions = length(fd);
 
 popdir;
@@ -68,8 +68,13 @@ for iS = 1:nSessions
         nT = length(sd.m.(cfg.models{iM}).varnames);
         this_t = sd.m.(cfg.models{iM}).tstat(keep, 2:end);
         
+<<<<<<< HEAD
+        if nCells > 1 & any(isnan(this_t))
+           error('naan'); 
+=======
         if any(isnan(this_t))
            this_t = this_t(1:nT);
+>>>>>>> 06c22167fc264482b6fd9d73c0f97efd102f6168
         end
         
         ALL_tstat(iM, start_idx:end_idx, 1:size(this_t, 2)) = this_t;
@@ -134,7 +139,7 @@ for iM = 1:nModels
     xvec = sd.cfg.ttr_bins(1:end-1) + diff(sd.cfg.ttr_bins)/2;
     
     env_idx = strmatch(cfg.models{iM}(1),envnames); % find envelope that shares first letter with model name...
-    if ~isempty(env_idx)
+    if length(env_idx) == 1
         this_env = ALL_env.(envnames{env_idx});
         envname = envnames{env_idx};
     else
