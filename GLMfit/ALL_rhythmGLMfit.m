@@ -17,11 +17,11 @@ cfg.kFold = 2; % folds per pleat
 %%
 please = [];
 %please.rats = {'R152', 'R156', 'R159', 'R169', 'R170', 'R184'};
-please.rats = {'R149'};
+please.rats = {'R117', 'R119', 'R132'};
 fc = getDataPath(please);
 
 %%
-for iS = 9:length(fc) % for each session...
+for iS = 1:length(fc) % for each session...
     
     pushdir(fc{iS});
     
