@@ -68,13 +68,8 @@ for iS = 1:nSessions
         nT = length(sd.m.(cfg.models{iM}).varnames);
         this_t = sd.m.(cfg.models{iM}).tstat(keep, 2:end);
         
-<<<<<<< HEAD
-        if nCells > 1 & any(isnan(this_t))
-           error('naan'); 
-=======
         if any(isnan(this_t))
            this_t = this_t(1:nT);
->>>>>>> 06c22167fc264482b6fd9d73c0f97efd102f6168
         end
         
         ALL_tstat(iM, start_idx:end_idx, 1:size(this_t, 2)) = this_t;
