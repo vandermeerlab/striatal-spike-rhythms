@@ -14,8 +14,8 @@ clear
 %cd(fd{1});
 
 please = [];
-please.rats = {'R117', 'R119', 'R131', 'R132'};
-fd = getDataPath(please);
+please.rats = {'R042'};
+[fd, fd_extra] = getDataPath(please);
 
 please.plot = 0;
 
@@ -39,6 +39,9 @@ else
 end
 
 csc = LoadCSC(cfg); csc.data = csc.data-nanmean(csc.data); % may need to locdetrend
+
+lfp_tt = regexp(cfg.fc, 'CSC\d+', 'match');
+lfp_tt = str2double(lfp_tt{1}{1}(end-1:end)); % need this to skip cells from same tt
 
 %% load data
 cfg = [];
