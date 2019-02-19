@@ -121,6 +121,7 @@ for iC = length(S.t):-1:1
     end
     
     bigP(cc,:) = P; F_acf = F;
+    ALL_sessno(cc) = iS;
     
     % shuffles for spike spectrum
     clear this_shufP;
