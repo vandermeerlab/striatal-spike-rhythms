@@ -2,17 +2,18 @@
 %
 % Collector script for output of ALL_rhythmGLMfit
 
-cfg.inputDir = 'C:\temp'; % where the files to load are
+cfg.inputDir = 'C:\temp\GLMfit'; % where the files to load are
 cfg.input_prefix = 'R0_'; 
-cfg.models = {'dphi','tphi','bphi','lgphi','hgphi','allphi'}; % models to be compared to baseline
-cfg.nMaxCells = 500;
+%cfg.models = {'dphi','tphi','bphi','lgphi','hgphi','allphi'}; % models to be compared to baseline
+cfg.models = {'hctheta'};
+cfg.nMaxCells = 2000;
 cfg.nTimeBins = 100;
 cfg.nSpaceBins = 100;
 
 %%
 pushdir(cfg.inputDir);
 
-fd = FindFiles(cat(2,cfg.input_prefix,'R*.mat'));
+fd = FindFiles(cat(2,cfg.input_prefix,'R149*.mat'));
 nSessions = length(fd);
 
 popdir;
@@ -68,7 +69,7 @@ for iS = 1:nSessions
         nT = length(sd.m.(cfg.models{iM}).varnames);
         this_t = sd.m.(cfg.models{iM}).tstat(keep, 2:end);
         
-        if any(isnan(this_t))
+        if nCells > 1 & any(isnan(this_t))
            error('naan'); 
         end
         
@@ -133,7 +134,7 @@ for iM = 1:nModels
     xvec = sd.cfg.ttr_bins(1:end-1) + diff(sd.cfg.ttr_bins)/2;
     
     env_idx = strmatch(cfg.models{iM}(1),envnames); % find envelope that shares first letter with model name...
-    if ~isempty(env_idx)
+    if length(env_idx) == 1
         this_env = ALL_env.(envnames{env_idx});
         envname = envnames{env_idx};
     else

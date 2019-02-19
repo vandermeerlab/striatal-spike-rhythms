@@ -31,26 +31,6 @@ function sd = rhythmGLMfit(cfg_in)
 %
 % required path: striatal-spike-rhythms github repo
 
-% load data
-%cd('C:\data\adrlab\R117-2007-06-20');
-%cd('D:\data\adrlab\R132\R132-2007-10-20');
-LoadExpKeys;
-
-% spikes
-sd.S = LoadSpikes([]);
-nCells = length(sd.S.t);
-
-% LFP
-cfg = []; cfg.fc = ExpKeys.goodGamma_vStr;
-csc = LoadCSC(cfg);
-
-% position
-pos = LoadPos([]);
-
-% reward deliveries
-evt = LoadEvents([]);
-reward_t = evt.t{1}; % should generalize this with known labels etc.. and remove double labels
-
 %% params
 cfg_master = []; % overall params
 cfg_master.dt = 0.001;
@@ -73,11 +53,70 @@ cfg_master.nMinSpikes = 100; % minimum number of spikes needed to include cell
 
 cfg_master = ProcessConfig(cfg_master,cfg_in);
 
+%% loading
+% load data
+%cd('C:\data\adrlab\R117-2007-06-20');
+%cd('D:\data\adrlab\R132\R132-2007-10-20');
+LoadExpKeys;
+
+% spikes
+sd.S = LoadSpikesTarget(cfg_master);
+nCells = length(sd.S.t); if nCells == 0, sd = []; return; end
+
+% LFP - vStr
+if isfield(ExpKeys,'goodGamma_vStr')
+    cfg = []; cfg.fc = ExpKeys.goodGamma_vStr(1);
+elseif isfield(ExpKeys,'goodGamma')
+     cfg = []; cfg.fc = ExpKeys.goodGamma(1);
+else
+    error('Don''t know what LFP to load.');
+end
+csc = LoadCSC(cfg);
+
+% LFP - vStr
+if isfield(ExpKeys,'goodTheta')
+    if iscell(ExpKeys.goodTheta)
+        cfg = []; cfg.fc = ExpKeys.goodTheta(1);
+    else
+        cfg = []; cfg.fc = {ExpKeys.goodTheta};
+    end
+else
+    error('Don''t know what HC LFP to load.');
+end
+csc_hc = LoadCSC(cfg);
+
 cfg_phi = []; % LFP features
 cfg_phi.dt = median(diff(csc.tvec));
 cfg_phi.ord = 100;
 cfg_phi.bins = -pi:pi/18:pi;
 cfg_phi.interp = 'nearest';
+
+% position
+if isempty(ls('*.nvt')) % hmm
+    fn = ls('*1.zip');
+    system(cat(2, '7z x ', fn));
+end
+pos = LoadPos([]);
+
+% reward deliveries
+evt = LoadEvents([]);
+keep = ~cellfun('isempty',evt.label); evt = SelectTS([],evt,keep);
+if isfield(ExpKeys,'FeederL1') % feeder IDs defined, use them
+    
+    feeders = cat(2, ExpKeys.FeederL1, ExpKeys.FeederR1);
+    reward_t = [];
+    ll = @(x) x(end); % function to get last character of input
+    for iF = 1:length(feeders)
+        
+        keep_idx = find(num2str(feeders(iF)) == cellfun(ll, evt.label));
+        reward_t = cat(1, reward_t, evt.t{keep_idx});
+        
+    end
+    reward_t = sort(reward_t);
+else
+    reward_t = evt.t{1};
+end
+% TODO: remove double labels!
 
 %% initialize variables
 % overall plan:
@@ -111,14 +150,8 @@ sd.TVECc = sd.TVECc(MASTER_keep);
 
 nMaxVars = 15; % only used for initializing t-stat matrix
 % baseline model MUST be defined first or things will break!
-sd.m.baseline.modelspec = 'spk ~ 1 + linpos + spd + ttr + cif';
-sd.m.dphi.modelspec = 'spk ~ 1 + linpos + spd + ttr + cif + delta_phase';
-sd.m.tphi.modelspec = 'spk ~ 1 + linpos + spd + ttr + cif + theta_phase';
-sd.m.bphi.modelspec = 'spk ~ 1 + linpos + spd + ttr + cif + beta_phase';
-sd.m.lgphi.modelspec = 'spk ~ 1 + linpos + spd + ttr + cif + lowGamma_phase';
-sd.m.hgphi.modelspec = 'spk ~ 1 + linpos + spd + ttr + cif + highGamma_phase';
-sd.m.allphi.modelspec = 'spk ~ 1 + linpos + spd + ttr + cif + delta_phase + beta_phase + theta_phase + lowGamma_phase + highGamma_phase';
-%sd.m.all.modelspec = 'spk ~ 1 + linpos + spd + ttr + cif + delta_phase + beta_phase + theta_phase + lowGamma_phase + highGamma_phase + delta_env + beta_env + theta_env + lowGamma_env + highGamma_env';
+sd.m.baseline.modelspec = 'spk ~ 1 + linpos + spd + ttr + cif + delta_phase + beta_phase + theta_phase + lowGamma_phase + highGamma_phase';
+sd.m.hctheta.modelspec = 'spk ~ 1 + linpos + spd + ttr + cif + delta_phase + beta_phase + theta_phase + lowGamma_phase + highGamma_phase + hctheta_phase';
 
 % init error vars
 mn = fieldnames(sd.m);
@@ -132,7 +165,7 @@ for iPleat = cfg_master.nPleats:-1:1
     C{iPleat} = cvpartition(length(sd.TVECc), 'KFold', cfg_master.kFold);
 end
 
-% LFP features
+% LFP features - vStr
 disp('Computing session-wide LFP features...');
 fb_names = fieldnames(cfg_master.f);
 cfg_phi.debug = 0;
@@ -145,6 +178,11 @@ for iF = 1:length(fb_names)
     
 end
 
+% LFP features - HC
+cfg_phi.fpass = cfg_master.f.theta;
+[FF.hctheta.phase, FF.hctheta.env] = ComputePhase(cfg_phi, csc_hc);
+fb_names = cat(1, fb_names, {'hctheta'});
+
 %
 spd = getLinSpd([],pos);
 
@@ -155,6 +193,7 @@ linpos = ComputeLinPos(pos);
 p.time = sd.TVECc';
 
 %% loop over all cells 
+cellCount = 0;
 for iC = nCells:-1:1
 
     fprintf('Cell %d/%d...\n',iC,nCells);
@@ -267,7 +306,12 @@ for iC = nCells:-1:1
         
     end % over pleats
     
+    cellCount = cellCount + 1;
 end % over cells
+
+if cellCount == 0
+    return;
+end
 
 %% analyze models
 this_f = ones(cfg_master.smooth, 1) ./ cfg_master.smooth;
@@ -421,11 +465,12 @@ end
 %%
 function linpos_tsd = ComputeLinPos(pos)
 
-f = FindFile('*Coord*');
+f = FindFiles('*Coord*');
 if ~isempty(f)
-    load(f);
+    load(f{1});
 else
-    error('No Coord file found.');
+    LoadMetadata;
+    Coord = metadata.Linpath.Coord8;
 end
 
 Coord_out = [];
@@ -471,5 +516,42 @@ data = filtfilt(Hd.sosMatrix, Hd.ScaleValues, csc.data);
 h = hilbert(data);
 phase = angle(h);
 env = abs(h);
+
+end
+
+%%
+function S = LoadSpikesTarget(cfg_in)
+
+if ~isfield(cfg_in, 'Target') % no target specified, load them all
+    S = LoadSpikes([]);
+    return;
+end
+LoadExpKeys;
+
+% target specified, need to do some work
+% first see if this session has more than one target
+
+nTargets = length(ExpKeys.Target);
+if ~iscell(ExpKeys.Target) | (iscell(ExpKeys.Target) && length(ExpKeys.Target) == 1) % one target
+    
+    target_idx = strmatch(cfg_in.Target, ExpKeys.Target);
+    if isempty(target_idx)
+        S = ts;
+    else
+        S = LoadSpikes([]);
+    end
+    
+else % multiple targets, assume TetrodeTargets exists
+    
+    please = []; please.getTTnumbers = 1;
+    S = LoadSpikes(please);
+    
+    target_idx = strmatch(cfg_in.Target, ExpKeys.Target);
+    tt_num_keep = find(ExpKeys.TetrodeTargets == target_idx);
+    
+    keep = ismember(S.usr.tt_num, tt_num_keep);
+    S = SelectTS([], S, keep);
+    
+end
 
 end
