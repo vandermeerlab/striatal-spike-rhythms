@@ -14,7 +14,7 @@ cfg_master.maxPeakn = 0.1; % if peak wv difference (normalized) with previous da
 cfg_master.ccMethod = 'MvdM'; % method used for cell classification (see also 'Sirota')
 cfg_master.minSpikes = 100; % only keep cells with at least this many spikes
 cfg_master.plot = 0; % produce output figure for each cell?
-cfg_master.nShuf = 2; % number of spike shuffles
+cfg_master.nShuf = 25; % number of spike shuffles
 cfg_master.trial_len = 50; % length (s) of trials to chop data up into
 cfg_master.rats = {'R117', 'R119', 'R131', 'R132'};
 
@@ -24,7 +24,7 @@ cfg_master.rats = {'R117', 'R119', 'R131', 'R132'};
 cc = 1; % cell count
 
 %%
-for iS = 2:length(fd)
+for iS = 1:length(fd)
 
     fprintf('Entering session %d/%d...\n',iS,length(fd));
     cd(fd{iS});
@@ -175,6 +175,7 @@ for iS = 2:length(fd)
         ALL.cellType(cc) = S.usr.cell_type(iC);
         ALL.cellLabel{cc} = S.label(iC);
         ALL.cellDepth(cc) = S.usr.tetrodeDepths(iC);
+        ALL.ID(cc) = s_out.cq.id(iC); ALL.Lr(cc) = s_out.cq.lr(iC); ALL.ampl(cc) = s_out.cq.ampl(iC);
          
         ALL.bigP(cc,:) = P; F_acf = F; % spike spectrum
         ALL.sessno(cc) = iS;

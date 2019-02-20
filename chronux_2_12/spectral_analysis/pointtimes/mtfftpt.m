@@ -24,7 +24,7 @@ H=fft(tapers,nfft,1);  % fft of tapers
 H=H(findx,:); % restrict fft of tapers to required frequencies
 w=2*pi*f; % angular frequencies at which ft is to be evaluated
 Nsp=zeros(1,C); Msp=zeros(1,C);
-for ch=1:C;
+for ch=C:-1:1 % MvdM edit: preallocate for speed
   if isstruct(data);
      fnames=fieldnames(data);
      eval(['dtmp=data(ch).' fnames{1} ';'])
@@ -41,7 +41,7 @@ for ch=1:C;
   Msp(ch)=Nsp(ch)/length(t);
   if Msp(ch)~=0;
       data_proj=interp1(t',tapers,dtmp);
-      exponential=exp(-i*w'*(dtmp-t(1))');
+      exponential=exp(-1i*w'*(dtmp-t(1))'); % MvdM: this is slow, why?
       J(:,:,ch)=exponential*data_proj-H*Msp(ch);
   else
       J(1:nfreq,1:K,ch)=0;
