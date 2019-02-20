@@ -40,7 +40,7 @@ function out = CategorizeStriatumWave(cfg_in,S)
 cfg_def = [];
 cfg_def.MinID = 20;
 cfg_def.MaxLr = 0.1;
-cfg_def.MinAmpl = 600;
+cfg_def.MinAmpl = 200;
 cfg_def.cMethod = 'Berke'; % alt: 'MvdM'
 
 cfg = ProcessConfig(cfg_def,cfg_in);
