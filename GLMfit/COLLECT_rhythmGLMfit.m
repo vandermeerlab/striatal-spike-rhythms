@@ -2,7 +2,9 @@
 %
 % Collector script for output of ALL_rhythmGLMfit
 
-cfg.inputDir = 'C:\temp\GLMfit\batch1'; % where the files to load are
+clear;
+
+cfg.inputDir = 'C:\temp\GLMfit'; % where the files to load are
 cfg.input_prefix = 'R0_'; 
 cfg.models = {'dphi','tphi','lgphi','hgphi','allphi'}; % models to be compared to baseline
 cfg.nMaxCells = 1000;
@@ -12,7 +14,7 @@ cfg.nSpaceBins = 100;
 %%
 pushdir(cfg.inputDir);
 
-fd = FindFiles(cat(2,cfg.input_prefix,'R149*.mat'));
+fd = FindFiles(cat(2,cfg.input_prefix,'*.mat'), 'CheckSubdirs', 0);
 nSessions = length(fd);
 
 popdir;
@@ -27,6 +29,8 @@ ALL_ttrErr = nan(nModels, cfg.nMaxCells, cfg.nTimeBins); % time to reward-binned
 ALL_spaceErr = nan(nModels, cfg.nMaxCells, cfg.nSpaceBins); % linearized position-binned model improvement
 ALL_tstat = nan(nModels, cfg.nMaxCells, 16); % t-stats
 
+ALL_celltype = nan(nModels, cfg.nMaxCells); % redundant across models but will be easier to deal with later
+
 % envelope variables (but this may not make sense for all models...)
 load(fd{1}); % load one file to get access to fieldnames
 envnames = fieldnames(sd.env_ttr);
@@ -36,7 +40,7 @@ for iEnv = 1:length(envnames)
     
 end
 
-% also need to add speed! include in sd
+% also need to add speed! include ttr and linpos versions in sd
 
 % counters
 cellCount = 1; % MATLAB indexing starts at 1
@@ -75,6 +79,9 @@ for iS = 1:nSessions
         ALL_tstat(iM, start_idx:end_idx, 1:size(this_t, 2)) = this_t;
         ALL_tstat_varnames{iM} = sd.m.(cfg.models{iM}).varnames;
         
+        % cell type
+        ALL_cellType(iM, start_idx:end_idx) = sd.cellType;
+        
     end % of models
 
     % collect session-wide variables (envelopes, speed...)
@@ -93,32 +100,48 @@ for iS = 1:nSessions
 end
 
 %% plot
+cellTypes = {'MSNs', 'FSIs', 'all'};
+
+for iC = 1:length(cellTypes)
+
+    switch cellTypes{iC}
+       
+        case 'MSNs'
+            cell_keep = find(ALL_cellType(1,:) == 1);
+        case 'FSIs'
+            cell_keep = find(ALL_cellType(1,:) == 2);
+        otherwise
+            cell_keep = find(~isnan(ALL_cellType(1,:)));
+    end
+    
+    cellCount = length(cell_keep);
+    
 for iM = 1:nModels
     
     figure;
     
     % average improvement across cells
     subplot(221);
-    this_err = ALL_avgErr(iM,:);
+    this_err = ALL_avgErr(iM, cell_keep);
     
-    plot(this_err,'LineWidth',1); hold on;
-    keep = find(this_err > 0); plot(keep,this_err(keep),'.g','MarkerSize',20);
-    keep = find(this_err < 0); plot(keep,this_err(keep),'.r','MarkerSize',20);
-    set(gca,'LineWidth',1,'FontSize',18); box off;
+    plot(this_err, 'LineWidth', 1); hold on;
+    keep = find(this_err > 0); plot(keep, this_err(keep), '.g', 'MarkerSize', 20);
+    keep = find(this_err < 0); plot(keep, this_err(keep), '.r', 'MarkerSize', 20);
+    set(gca, 'LineWidth', 1, 'FontSize', 18); box off;
     ylabel('Prediction improvement'); xlabel('cell #');
-    title(cat(2,'Model ', cfg.models{iM}));
+    title(sprintf('Model %s (%s)', cfg.models{iM}, cellTypes{iC}));
     
     % t-stat across cells
     subplot(222);
     
-    this_tstat = sq(ALL_tstat(iM,:,:));
+    this_tstat = sq(ALL_tstat(iM, cell_keep, :));
     this_vars = ALL_tstat_varnames{iM}; nVars = length(ALL_tstat_varnames{iM});
     this_tstat = this_tstat(1:cellCount-1,1:nVars);
     
     imagesc(this_tstat); colorbar; caxis([0 20]);
     
     trunc = @(x) x(1:2); lbl = cellfun(trunc, this_vars, 'UniformOutput', false);
-    set(gca,'LineWidth',1,'FontSize',12,'XTick',1:nVars,'XTickLabel',lbl); box off;
+    set(gca, 'LineWidth', 1, 'FontSize', 12, 'XTick', 1:nVars, 'XTickLabel', lbl); box off;
     ylabel('cell #');
     
     % t-stat correlations
@@ -130,10 +153,10 @@ for iM = 1:nModels
     
     figure;
     
-    this_ttr = sq(ALL_ttrErr(iM,:,:));
+    this_ttr = sq(ALL_ttrErr(iM, cell_keep, :));
     xvec = sd.cfg.ttr_bins(1:end-1) + diff(sd.cfg.ttr_bins)/2;
     
-    env_idx = strmatch(cfg.models{iM}(1),envnames); % find envelope that shares first letter with model name...
+    env_idx = strmatch(cfg.models{iM}(1), envnames); % find envelope that shares first letter with model name...
     if length(env_idx) == 1
         this_env = ALL_env.(envnames{env_idx});
         envname = envnames{env_idx};
@@ -143,14 +166,15 @@ for iM = 1:nModels
     end
     
     subplot(221);
-    [ax h1 h2] = plotyy(xvec,nanmean(this_ttr),xvec,nanmean(this_env));
+    [ax h1 h2] = plotyy(xvec, nanmean(this_ttr), xvec, nanmean(this_env));
     hold on;
     set(h1,'LineWidth',2);
-    set(gca,'XTick',-5:5,'LineWidth',1,'FontSize',18,'YLim',[0 1.5e-6],'YTick',0:0.5e-6:1.5e-6); box off;
+    %set(gca,'XTick',-5:5,'LineWidth',1,'FontSize',18,'YLim',[0 1.5e-6],'YTick',0:0.5e-6:1.5e-6); box off;
+    set(gca,'XTick',-5:5,'LineWidth',1,'FontSize',18); box off;
     ylabel('Prediction improvement'); xlabel('time from reward (s)');
     
-    title(cat(2,'Model ', cfg.models{iM}, ' env ', envname));
-   
+    title(sprintf('Model %s (%s), env %s', cfg.models{iM}, cellTypes{iC}, envname));
+    
     subplot(223);
     imagesc(this_ttr(1:cellCount - 1,:));
     
@@ -165,18 +189,11 @@ for iM = 1:nModels
     set(gca,'XTick',-5:5,'LineWidth',1,'FontSize',18); box off;
     ylabel('Prediction improvement'); xlabel('time from reward (s)');
     
-    title(cat(2,'Model ', cfg.models{iM}, ' env ', envname));
-   
+    title(sprintf('Model %s (%s), env %s', cfg.models{iM}, cellTypes{iC}, envname));
+    
     subplot(224);
     imagesc(this_ttr(1:cellCount - 1,:));
     
-    %
-    %this_space = sq(ALL_spaceErr(iM,:,:));
-    %
-    %subplot(222);
-    %plot(nanmean(this_space));
-    %
-    %subplot(224);
-    %imagesc(this_space(1:cellCount - 1,:));
-    
 end
+
+end % of cell types
