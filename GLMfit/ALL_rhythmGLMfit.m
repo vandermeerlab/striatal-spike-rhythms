@@ -18,8 +18,8 @@ cfg.kFold = 2; % folds per pleat
 
 %%
 please = [];
-%please.rats = {'R152', 'R156', 'R159', 'R169', 'R170', 'R184'};
-please.rats = {'R117', 'R119', 'R132'};
+please.rats = {'R117', 'R119', 'R131', 'R132'}; % vStr-only rats
+% please.rats = {'R149', 'R152', 'R156', 'R159', 'R169', 'R170', 'R184', 'R192', 'R194'}; % vStr-HC
 [cfg.fd, cfg.fd_extra] = getDataPath(please);
 
 %%

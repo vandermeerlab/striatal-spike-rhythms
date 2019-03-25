@@ -73,7 +73,7 @@ else
 end
 csc = LoadCSC(cfg);
 
-% LFP - vStr
+% LFP - HC
 if isfield(ExpKeys,'goodTheta')
     if iscell(ExpKeys.goodTheta)
         cfg = []; cfg.fc = ExpKeys.goodTheta(1);
@@ -84,6 +84,12 @@ else
     error('Don''t know what HC LFP to load.');
 end
 csc_hc = LoadCSC(cfg);
+
+% deal with strange possibility that LFPs are different lengths
+if length(csc_hc.tvec) ~= length(csc.tvec)
+    csc_hc.data = interp1(csc_hc.tvec, csc_hc.data, csc.tvec, 'linear'); csc_hc.tvec = csc.tvec; 
+    disp('Corrected different LFP lengths.');
+end
 
 cfg_phi = []; % LFP features
 cfg_phi.dt = median(diff(csc.tvec));
@@ -116,6 +122,13 @@ if isfield(ExpKeys,'FeederL1') % feeder IDs defined, use them
 else
     reward_t = evt.t{1};
 end
+fprintf('%d trials detected.\n', length(reward_t));
+
+if length(reward_t) < 20
+   disp('*** SESSION SKIPPED DUE TO INSUFFICIENT TRIALS ***');
+   return;
+end
+
 % TODO: remove double labels!
 
 %% initialize variables

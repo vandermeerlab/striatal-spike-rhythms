@@ -40,14 +40,14 @@ for iF = 5%1:length(fc)
     cfg.trl       = [data_all.sampleinfo(1) data_all.sampleinfo(2) 0]; % now in samples
     spike_trl     = ft_spike_maketrials(cfg,spike);
     
-    % only proceed if more than some number of spikes, etc..
+    % only proceed if more than some number of spikes, spike not the same as LFP channel etc..
     
     
     % spike triggered spectrum (nice convolution method)
     cfg              = [];
     cfg.method       = 'mtmconvol';
     cfg.foi          = 1:100;
-    cfg.t_ftimwin    = 7./cfg.foi; % 5 cycles per frequency
+    cfg.t_ftimwin    = 5./cfg.foi; % 5 cycles per frequency
     cfg.taper        = 'hanning';
     cfg.channel      = data_all.label(1);
     stsConvol        = ft_spiketriggeredspectrum(cfg, data_all, spike_trl);
