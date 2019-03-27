@@ -2,6 +2,8 @@
 tfr_baseline = [-5 -4.5];
 for iC = 1:cc
 
+    figure;
+    
     % session-specgram
     subplot(331); 
     t_idx = nearest_idx3(tfr_baseline, ALL.sessionTFR(iC).time);
@@ -62,16 +64,17 @@ for iC = 1:cc
     set(gca,'LineWidth',1,'FontSize',18,'TickDir','out','XLim',[-5 5]); xlabel('time'); ylabel('frequency (Hz)'); title('spike spectrum (n)');
     
     drawnow;
-    pause; clf;
+    %pause; clf;
 
 end
 
 
 %% some averages
-what = {'FSI', 'MSNonly', 'nonFSI', 'all'};
+%what = {'FSI', 'MSNonly', 'nonFSI', 'all'};
+what = {'all'};
 ib = 1:0.5:100; % new frequency basis
 hh = 0.1; % histogram height
-ph = 1; % number of vertical subplots (controls height)
+ph = 2; % number of vertical subplots (controls height)
 c_scale = 0.25;
 
 for iW = 1:length(what)
@@ -87,6 +90,7 @@ for iW = 1:length(what)
             keep_idx = 1:length(ALL.cellType);
     end
     nCells = length(keep_idx);
+    fprintf('%d cells of %d (%.2f %%) are %s\n', nCells, length(ALL.cellType), (nCells ./ length(ALL.cellType)) .* 100, what{iW});
     
     figure;
     
@@ -162,7 +166,7 @@ for iW = 1:length(what)
     grid on; xlabel('frequency (Hz)'); 
     ylim([0 2]);
     
-    figure;
+    figure; % z-scored
     
     as = subplot(ph, 3, 1);
     ax1 = axes('Position', [as.Position(1) as.Position(2) + hh * as.Position(4) as.Position(3) (1-hh) * as.Position(4)]); 
@@ -198,6 +202,98 @@ for iW = 1:length(what)
     grid on; xlabel('frequency (Hz)'); 
     
     
+    figure; % histograms/counts
+    
+    subplot(331)
+    hb = bar(ib, nanmean(this_ssN > 1.96), 'k'); box off; set(hb, 'EdgeColor', 'none');
+    set(gca, 'LineWidth', 1, 'XLim', [1 100], 'TickDir', 'out', 'XTick', [1 10:10:100], ...
+        'XTickLabel', {'1', '', '20', '', '40', '', '60', '', '80', '', '100'}, ...
+        'FontSize', 18, 'YLim', [0 1], 'YTick', 0:0.25:1, 'YTickLabel', {'0','','0.5','','1'});
+    xlabel('frequency (Hz)'); grid on; title('SS prop. significant');
+    
+    subplot(332)
+    hb = bar(ib, nanmean(this_ppcN > 1.96), 'k'); box off; set(hb, 'EdgeColor', 'none');
+    set(gca, 'LineWidth', 1, 'XLim', [1 100], 'TickDir', 'out', 'XTick', [1 10:10:100], ...
+        'XTickLabel', {'1', '', '20', '', '40', '', '60', '', '80', '', '100'}, ...
+        'FontSize', 18, 'YLim', [0 1], 'YTick', 0:0.25:1, 'YTickLabel', {'0','','0.5','','1'});
+    xlabel('frequency (Hz)'); grid on; title('PPC prop. significant');
+    
+    
+    figure; % freq specific histograms (raw)
+    
+    fb = {[2.5 5.5], [6.5 9.5], [13.5 25.5], [39.5 64.5], [65.5 89.5]};
+    fn = {'delta', 'theta', 'beta', 'lgamma', 'hgamma'};
+    nBins = 100;
+    
+    for iF = 1:length(fb)
+       
+        % ss
+        
+        this_ib = find(ib >= fb{iF}(1) & ib < fb{iF}(2));
+        
+        temp = nanmean(this_ssN(:, this_ib), 2);
+        keep_idx = temp > 1.96;
+        
+        if sum(keep_idx) > 0
+        
+            ss_avg = nanmean(this_ss(keep_idx, this_ib), 2); % could consider doing max...
+            bin_edgesLog = linspace(floor(10*log10(min(ss_avg)))/10, ceil(10*log10(max(ss_avg)))/10, nBins);
+            bin_centersLog = bin_edgesLog(1:end-1) + mode(diff(bin_edgesLog)) ./ 2;
+            this_h = histc(log10(ss_avg), bin_edgesLog); this_h = this_h(1:end-1);
+            
+            subplot(4, 5, iF)
+            hb = bar(bin_centersLog, this_h, 'k'); box off; set(hb, 'EdgeColor', 'none');
+            set(gca, 'LineWidth', 1, 'TickDir', 'out', ...
+                'FontSize', 18), ...
+                xlabel('log power'); title(sprintf('%s ss (n = %d, %.2f%%)', fn{iF}, sum(keep_idx), (sum(keep_idx) ./ nCells) .* 100));
+            
+            ss_avg = nanmean(this_ssN(keep_idx, this_ib), 2); % could consider doing max...
+            %[this_h, this_b] = hist(ss_avg, nBins);
+            bin_edgesLog = linspace(floor(10*log10(min(ss_avg)))/10, ceil(10*log10(max(ss_avg)))/10, nBins);
+            bin_centersLog = bin_edgesLog(1:end-1) + mode(diff(bin_edgesLog)) ./ 2;
+            this_h = histc(log10(ss_avg), bin_edgesLog); this_h = this_h(1:end-1);
+            
+            subplot(4, 5, iF+5)
+            hb = bar(bin_centersLog, this_h, 'k'); box off; set(hb, 'EdgeColor', 'none');
+            set(gca, 'LineWidth', 1, 'TickDir', 'out', ...
+                'FontSize', 18), ...
+                xlabel('log power (z)'); title(sprintf('%s ss (n = %d, %.2f%%)', fn{iF}, sum(keep_idx), (sum(keep_idx) ./ nCells) .* 100));
+    
+        end
+        
+        % ppc
+    
+        temp = nanmean(this_ppcN(:, this_ib), 2);
+        keep_idx = temp > 1.96;
+    
+        if sum(keep_idx) > 0
+        
+            ss_avg = nanmean(this_ppc(keep_idx, this_ib), 2); % could consider doing max...
+            bin_edgesLog = linspace(floor(10*log10(min(ss_avg)))/10, ceil(10*log10(max(ss_avg)))/10, nBins);
+            bin_centersLog = bin_edgesLog(1:end-1) + mode(diff(bin_edgesLog)) ./ 2;
+            this_h = histc(log10(ss_avg), bin_edgesLog); this_h = this_h(1:end-1);
+            
+            subplot(4, 5, iF+10)
+            hb = bar(bin_centersLog, this_h, 'k'); box off; set(hb, 'EdgeColor', 'none');
+            set(gca, 'LineWidth', 1, 'TickDir', 'out', ...
+                'FontSize', 18), ...
+                xlabel('log PPC'); title(sprintf('%s ppc (n = %d, %.2f%%)', fn{iF}, sum(keep_idx), (sum(keep_idx) ./ nCells) .* 100));
+                          
+            ss_avg = nanmean(this_ppcN(keep_idx, this_ib), 2); % could consider doing max...
+            bin_edgesLog = linspace(floor(10*log10(min(ss_avg)))/10, ceil(10*log10(max(ss_avg)))/10, nBins);
+            bin_centersLog = bin_edgesLog(1:end-1) + mode(diff(bin_edgesLog)) ./ 2;
+            this_h = histc(log10(ss_avg), bin_edgesLog); this_h = this_h(1:end-1);
+            
+            subplot(4, 5, iF+15)
+            hb = bar(bin_centersLog, this_h, 'k'); box off; set(hb, 'EdgeColor', 'none');
+            set(gca, 'LineWidth', 1, 'TickDir', 'out', ...
+                'FontSize', 18), ...
+                xlabel('log PPC (z)'); title(sprintf('%s ppcN (n = %d, %.2f%%)', fn{iF}, sum(keep_idx), (sum(keep_idx) ./ nCells) .* 100));
+               
+        end
+    
+    end
+     
     
 end
 
@@ -290,3 +386,4 @@ set(gca, 'LineWidth', 1, 'TickDir', 'out', 'XTick', [1 10:10:100], ...
         'FontSize', 18, 'YTick', [1 10:10:100], ...
         'YTickLabel', {'1', '', '20', '', '40', '', '60', '', '80', '', '100'});
 grid on; caxis(ca);
+
