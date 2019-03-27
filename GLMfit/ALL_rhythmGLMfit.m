@@ -1,6 +1,8 @@
 % ALL_rhythmGLMfit.m
 %
 % Batch script to run rhythmGLMfit.m on multiple sessions
+restoredefaultpath;
+addpath(genpath('C:\Users\mvdm\Documents\GitHub\striatal-spike-rhythms'));
 
 %% 
 cfg = [];
@@ -16,16 +18,17 @@ cfg.kFold = 2; % folds per pleat
 
 %%
 please = [];
-please.rats = {'R149', 'R152', 'R156', 'R159', 'R169', 'R170', 'R184', 'R192', 'R194'};
-%please.rats = {'R117', 'R119', 'R132'};
-fc = getDataPath(please);
+please.rats = {'R117', 'R119', 'R131', 'R132'}; % vStr-only rats
+% please.rats = {'R149', 'R152', 'R156', 'R159', 'R169', 'R170', 'R184', 'R192', 'R194'}; % vStr-HC
+[cfg.fd, cfg.fd_extra] = getDataPath(please);
 
 %%
-for iS = 1:length(fc) % for each session...
+for iS = 2:length(cfg.fd) % for each session...
     
-    pushdir(fc{iS});
+    cfg.iS = iS;
+    pushdir(cfg.fd{iS});
     
-    rhythmGLMfit_HC(cfg); % do the business
+    rhythmGLMfit2(cfg); % do the business
     
     popdir;
     
