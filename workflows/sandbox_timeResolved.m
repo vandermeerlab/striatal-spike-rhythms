@@ -399,6 +399,12 @@ for iS = 1%:length(fd)
         ALL.ppc(cc,:) = statSts.ppc0';
         ALL.ppc_freq = statSts.freq;
         
+        cfg.method        = 'ang';
+        cfg.foi           = 'all';
+        statSts           = ft_spiketriggeredspectrum_stat(cfg, stsConvol);
+        
+        ALL.ppc_ang(cc,:) = statSts.ang;
+        
         if any(isnan(ALL.ppc(cc,:)))
            error('PPC failed!'); 
         end

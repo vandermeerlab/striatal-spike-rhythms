@@ -5,13 +5,15 @@ for iC = 1:cc
     figure;
     
     % session-specgram
-    subplot(331); 
-    t_idx = nearest_idx3(tfr_baseline, ALL.sessionTFR(iC).time);
-    baseline = sq(nanmean(ALL.sessionTFR(iC).powspctrm(:, :, t_idx(1):t_idx(2)), 3));
-    baseline = repmat(baseline', [1 size(ALL.sessionTFR(iC).powspctrm, 3)]);
-    
-    imagesc(ALL.sessionTFR(iC).time, ALL.sessionTFR(iC).freq, sq(ALL.sessionTFR(iC).powspctrm)-baseline); axis xy; colorbar;
-    set(gca,'LineWidth',1,'FontSize',18,'TickDir','out'); xlabel('time'); ylabel('frequency (Hz)'); title('LFP spectrogram');
+    if isfield(ALL, 'sessionTFR');
+        subplot(331);
+        t_idx = nearest_idx3(tfr_baseline, ALL.sessionTFR(iC).time);
+        baseline = sq(nanmean(ALL.sessionTFR(iC).powspctrm(:, :, t_idx(1):t_idx(2)), 3));
+        baseline = repmat(baseline', [1 size(ALL.sessionTFR(iC).powspctrm, 3)]);
+        
+        imagesc(ALL.sessionTFR(iC).time, ALL.sessionTFR(iC).freq, sq(ALL.sessionTFR(iC).powspctrm)-baseline); axis xy; colorbar;
+        set(gca,'LineWidth',1,'FontSize',18,'TickDir','out'); xlabel('time'); ylabel('frequency (Hz)'); title('LFP spectrogram');
+    end
     
     % spike spectrum -- COULD SMOOTH THIS SOME
     subplot(332);
@@ -70,7 +72,7 @@ end
 
 
 %% some averages
-%what = {'FSI', 'MSNonly', 'nonFSI', 'all'};
+%what = {'FSI', 'MSNonly', 'all'};
 what = {'all'};
 ib = 1:0.5:100; % new frequency basis
 hh = 0.1; % histogram height
@@ -95,29 +97,31 @@ for iW = 1:length(what)
     figure;
     
     % spike spectra
-    this_ss = ALL.spkSpec(keep_idx, :)';
-    this_ss = interp1(ALL.spkSpec_freq, this_ss, ib, 'linear')';
-    
-    this_ssN = (ALL.spkSpec(keep_idx, :) - ALL.spkSpec_shufmean(keep_idx, :)) ./ ALL.spkSpec_shufSD(keep_idx, :);
-    this_ssN = interp1(ALL.spkSpec_freq, this_ssN', ib, 'linear')';
-    
-    as = subplot(ph, 3, 1);
-    ax1 = axes('Position', [as.Position(1) as.Position(2) + hh * as.Position(4) as.Position(3) (1-hh) * as.Position(4)]); 
-    ax2 = axes('Position', [as.Position(1) as.Position(2) as.Position(3) hh * as.Position(4)]);
-    delete(as);
-    
-    axes(ax1); imagesc(ib, 1:nCells, this_ss); axis xy
-    set(gca, 'LineWidth', 1, 'XLim', [1 100], 'XTick', [1 10:10:100], 'XTickLabel', [], 'FontSize', 18, 'YTick', []);
-    ylabel('cell #'); title(sprintf('spike spectrum (raw, %s)', what{iW})); grid on;
-    %caxis(caxis.*c_scale);
-    caxis([0 1*10e-3]);
-    
-    axes(ax2); plot(ib, nanmean(this_ss), 'k'); box off;
-    set(gca, 'LineWidth', 1, 'XLim', [1 100], 'TickDir', 'out', 'XTick', [1 10:10:100], ...
-        'XTickLabel', {'1', '', '20', '', '40', '', '60', '', '80', '', '100'}, ...
-        'FontSize', 18, 'YTick', []);
-    grid on; xlabel('frequency (Hz)'); 
-    ylim([0.25e-3 2.5e-3]);
+    if isfield(ALL, 'spkSpec')
+        this_ss = ALL.spkSpec(keep_idx, :)';
+        this_ss = interp1(ALL.spkSpec_freq, this_ss, ib, 'linear')';
+        
+        this_ssN = (ALL.spkSpec(keep_idx, :) - ALL.spkSpec_shufmean(keep_idx, :)) ./ ALL.spkSpec_shufSD(keep_idx, :);
+        this_ssN = interp1(ALL.spkSpec_freq, this_ssN', ib, 'linear')';
+        
+        as = subplot(ph, 3, 1);
+        ax1 = axes('Position', [as.Position(1) as.Position(2) + hh * as.Position(4) as.Position(3) (1-hh) * as.Position(4)]);
+        ax2 = axes('Position', [as.Position(1) as.Position(2) as.Position(3) hh * as.Position(4)]);
+        delete(as);
+        
+        axes(ax1); imagesc(ib, 1:nCells, this_ss); axis xy
+        set(gca, 'LineWidth', 1, 'XLim', [1 100], 'XTick', [1 10:10:100], 'XTickLabel', [], 'FontSize', 18, 'YTick', []);
+        ylabel('cell #'); title(sprintf('spike spectrum (raw, %s)', what{iW})); grid on;
+        %caxis(caxis.*c_scale);
+        caxis([0 1*10e-3]);
+        
+        axes(ax2); plot(ib, nanmean(this_ss), 'k'); box off;
+        set(gca, 'LineWidth', 1, 'XLim', [1 100], 'TickDir', 'out', 'XTick', [1 10:10:100], ...
+            'XTickLabel', {'1', '', '20', '', '40', '', '60', '', '80', '', '100'}, ...
+            'FontSize', 18, 'YTick', []);
+        grid on; xlabel('frequency (Hz)');
+        ylim([0.25e-3 2.5e-3]);
+    end
     
     % ppc
     this_ppc = ALL.ppc(keep_idx, :)';
@@ -145,6 +149,7 @@ for iW = 1:length(what)
     ylim([-0.001 0.01]);
     
     % stap
+    if isfield(ALL, 'STAp')
     this_sta = ALL.STAp(keep_idx, :)';
     this_sta = interp1(ALL.STAp_freq, this_sta, ib, 'linear')';
     
@@ -165,9 +170,11 @@ for iW = 1:length(what)
         'FontSize', 18, 'YTick', []);
     grid on; xlabel('frequency (Hz)'); 
     ylim([0 2]);
+    end
     
     figure; % z-scored
     
+    if isfield(ALL, 'spkSpec')
     as = subplot(ph, 3, 1);
     ax1 = axes('Position', [as.Position(1) as.Position(2) + hh * as.Position(4) as.Position(3) (1-hh) * as.Position(4)]); 
     ax2 = axes('Position', [as.Position(1) as.Position(2) as.Position(3) hh * as.Position(4)]);
@@ -183,7 +190,7 @@ for iW = 1:length(what)
         'XTickLabel', {'1', '', '20', '', '40', '', '60', '', '80', '', '100'}, ...
         'FontSize', 18, 'YTick', []);
     grid on; xlabel('frequency (Hz)'); 
-    
+    end
     
     as = subplot(ph, 3, 2);
     ax1 = axes('Position', [as.Position(1) as.Position(2) + 0.1 * as.Position(4) as.Position(3) 0.9 * as.Position(4)]); 
@@ -204,12 +211,14 @@ for iW = 1:length(what)
     
     figure; % histograms/counts
     
+    if isfield(ALL, 'spkSpec')
     subplot(331)
     hb = bar(ib, nanmean(this_ssN > 1.96), 'k'); box off; set(hb, 'EdgeColor', 'none');
     set(gca, 'LineWidth', 1, 'XLim', [1 100], 'TickDir', 'out', 'XTick', [1 10:10:100], ...
         'XTickLabel', {'1', '', '20', '', '40', '', '60', '', '80', '', '100'}, ...
         'FontSize', 18, 'YLim', [0 1], 'YTick', 0:0.25:1, 'YTickLabel', {'0','','0.5','','1'});
     xlabel('frequency (Hz)'); grid on; title('SS prop. significant');
+    end
     
     subplot(332)
     hb = bar(ib, nanmean(this_ppcN > 1.96), 'k'); box off; set(hb, 'EdgeColor', 'none');
@@ -218,6 +227,27 @@ for iW = 1:length(what)
         'FontSize', 18, 'YLim', [0 1], 'YTick', 0:0.25:1, 'YTickLabel', {'0','','0.5','','1'});
     xlabel('frequency (Hz)'); grid on; title('PPC prop. significant');
     
+    % phases -- need to get histogram for each frequency
+    this_phi = ALL.ppc_ang(keep_idx, :)';
+    this_phi = interp1(ALL.ppc_freq, this_phi, ib, 'nearest')';
+    for iB = length(ib):-1:1
+        [phi_hist(iB, :), pb] = hist(this_phi(this_ppcN(:, iB) > 1.96, iB), 6);
+    end
+    
+    subplot(334)
+    imagesc(ib,pb,phi_hist');
+    set(gca, 'LineWidth', 1, 'XLim', [1 100], 'TickDir', 'out', 'XTick', [1 10:10:100], ...
+        'XTickLabel', {'1', '', '20', '', '40', '', '60', '', '80', '', '100'}, ...
+        'FontSize', 18, 'YLim', [-pi pi], 'YTick', [-pi pi], 'YTickLabel', {'-pi', 'pi'});
+    xlabel('frequency (Hz)'); grid on; title('raw phase histogram');
+    
+    phi_histN = phi_hist ./ repmat(nansum(phi_hist, 2), [1 size(phi_hist, 2)]);
+    subplot(335)
+    imagesc(ib,pb,phi_histN');
+    set(gca, 'LineWidth', 1, 'XLim', [1 100], 'TickDir', 'out', 'XTick', [1 10:10:100], ...
+        'XTickLabel', {'1', '', '20', '', '40', '', '60', '', '80', '', '100'}, ...
+        'FontSize', 18, 'YLim', [-pi pi], 'YTick', [-pi pi], 'YTickLabel', {'-pi', 'pi'});
+    xlabel('frequency (Hz)'); grid on; title('normalized phase histogram');
     
     figure; % freq specific histograms (raw)
     
@@ -226,11 +256,12 @@ for iW = 1:length(what)
     nBins = 100;
     
     for iF = 1:length(fb)
-       
-        % ss
-        
+             
         this_ib = find(ib >= fb{iF}(1) & ib < fb{iF}(2));
         
+        % ss
+        if isfield(ALL, 'spkSpec')
+
         temp = nanmean(this_ssN(:, this_ib), 2);
         keep_idx = temp > 1.96;
         
@@ -259,6 +290,7 @@ for iW = 1:length(what)
                 'FontSize', 18), ...
                 xlabel('log power (z)'); title(sprintf('%s ss (n = %d, %.2f%%)', fn{iF}, sum(keep_idx), (sum(keep_idx) ./ nCells) .* 100));
     
+        end
         end
         
         % ppc
@@ -294,8 +326,40 @@ for iW = 1:length(what)
     
     end
      
+    % phase histograms
+    figure;
     
-end
+    for iF = 1:length(fb)
+        
+        this_ib = find(ib >= fb{iF}(1) & ib < fb{iF}(2));
+        
+        % find significant PPC cells
+        temp = nanmean(this_ppcN(:, this_ib), 2);
+        keep_idx = temp > 1.96;
+        
+        % get mean phase and raw PPC for significant cells
+        % NOTE: could instead find max PPC and get corresponding angle
+        % (only if mean is significant)
+        %this_phi_band = circmean(this_phi(keep_idx, this_ib)');
+        
+        %this_ppc_band = nanmean(this_ppc(:, this_ib), 2);
+        [this_ppc_band, temp_idx] = max(this_ppc(keep_idx, this_ib)');
+        this_phi_band = this_phi(keep_idx, temp_idx);
+        
+        % plot
+        subplot(4, 5, iF);
+        for iC = 1:length(this_ppc_band)
+            %h = polarplot([0 this_phi_band(iC)], [0 log(this_ppc_band(iC))], '-k'); set(h, 'LineWidth', 1);
+            h = polarplot([0 this_phi_band(iC)], [0 this_ppc_band(iC)], '-k'); set(h, 'LineWidth', 1);
+            hold on;
+        end
+        %set(gca, 'FontSize', 18, 'RLim', [0 0.1], 'RTickLabel', {}, 'ThetaTickLabel', {}); 
+        set(gca, 'FontSize', 18, 'RTickLabel', {}, 'ThetaTickLabel', {});
+        title(sprintf('%s (n = %d) raw PPC', fn{iF}, length(this_phi_band)));
+        
+    end % of freq bands
+    
+end % of cell types
 
 
 %% correlations
