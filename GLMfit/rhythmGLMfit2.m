@@ -152,24 +152,8 @@ end
 pos = LoadPos([]);
 
 % reward deliveries
-evt = LoadEvents([]);
-keep = ~cellfun('isempty',evt.label); evt = SelectTS([],evt,keep);
-if isfield(ExpKeys,'FeederL1') % feeder IDs defined, use them
-    
-    feeders = cat(2, ExpKeys.FeederL1, ExpKeys.FeederR1);
-    reward_t = [];
-    ll = @(x) x(end); % function to get last character of input
-    for iF = 1:length(feeders)
-        
-        keep_idx = find(num2str(feeders(iF)) == cellfun(ll, evt.label));
-        reward_t = cat(1, reward_t, evt.t{keep_idx});
-        
-    end
-    reward_t = sort(reward_t);
-else
-    reward_t = evt.t{1};
-end
-% TODO: remove double labels!
+reward_t = getRewardTimes;
+fprintf('%d trials found.\n', length(reward_t));
 
 %% initialize variables
 % overall plan:
