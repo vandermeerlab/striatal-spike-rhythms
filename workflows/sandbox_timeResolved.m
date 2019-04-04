@@ -5,10 +5,10 @@
 
 clear
 restoredefaultpath;
-%addpath(genpath('D:\My_Documents\GitHub\striatal-spike-rhythms\shared'));
-%addpath(genpath('D:\My_Documents\GitHub\striatal-spike-rhythms\chronux_2_12\spectral_analysis'));
-addpath(genpath('C:\Users\mvdm\Documents\GitHub\striatal-spike-rhythms\shared'));
-addpath(genpath('C:\Users\mvdm\Documents\GitHub\striatal-spike-rhythms\chronux_2_12\spectral_analysis'));
+addpath(genpath('D:\My_Documents\GitHub\striatal-spike-rhythms\shared'));
+addpath(genpath('D:\My_Documents\GitHub\striatal-spike-rhythms\chronux_2_12\spectral_analysis'));
+%addpath(genpath('C:\Users\mvdm\Documents\GitHub\striatal-spike-rhythms\shared'));
+%addpath(genpath('C:\Users\mvdm\Documents\GitHub\striatal-spike-rhythms\chronux_2_12\spectral_analysis'));
 
 % set default interpreter to non-LaTeX
 
@@ -20,9 +20,9 @@ cfg_master.minSpikes = 100; % only keep cells with at least this many spikes
 cfg_master.plot = 0; % produce output figure for each cell?
 cfg_master.wsize = 5; % length (s) of data analysis window either side of reward delivery
 cfg_master.pad = 0.5; % padding (s) of data analysis window on either side (to avoid edge effects)
-%cfg_master.rats = {'R117', 'R119', 'R131', 'R132'};
-cfg_master.rats = {'R117'};
-cfg_master.nShuf = 20; % number of shuffles for spike-triggered spectrum and PPC
+cfg_master.rats = {'R117', 'R119', 'R131', 'R132'};
+%cfg_master.rats = {'R117'};
+cfg_master.nShuf = 100; % number of shuffles for spike-triggered spectrum and PPC
 cfg_master.spk_dt = 0.0025; % interspike interval for surrogate spike train used for spike-triggered spectrum pool
 
 [fd, fd_extra] = getDataPath(cfg_master);
@@ -31,7 +31,7 @@ cfg_master.spk_dt = 0.0025; % interspike interval for surrogate spike train used
 cc = 1; % cell count
 
 %%
-for iS = 1%:length(fd)
+for iS = 1:length(fd)
 
     fprintf('Entering session %d/%d...\n',iS,length(fd));
     cd(fd{iS});
@@ -80,13 +80,13 @@ for iS = 1%:length(fd)
         reward_t = reward_t(keep);
     else
         disp('*** SESSION SKIPPED DUE TO UNCLEAR REWARD INFO ***');
-        return;
+        continue;
     end
     fprintf('%d trials detected.\n', length(reward_t));
     
     if length(reward_t) < 20
         disp('*** SESSION SKIPPED DUE TO INSUFFICIENT TRIALS ***');
-        return;
+        continue;
     end
     
     %% load ft format data
@@ -495,13 +495,13 @@ function prev_path = set_ft_path()
 prev_path = path;
 
 restoredefaultpath;
-%addpath('D:\My_Documents\GitHub\fieldtrip'); ft_defaults
-%addpath('D:\My_Documents\GitHub\striatal-spike-rhythms\shared\io\ft');
-%addpath('D:\My_Documents\GitHub\striatal-spike-rhythms\shared\io\neuralynx');
+addpath('D:\My_Documents\GitHub\fieldtrip'); ft_defaults
+addpath('D:\My_Documents\GitHub\striatal-spike-rhythms\shared\io\ft');
+addpath('D:\My_Documents\GitHub\striatal-spike-rhythms\shared\io\neuralynx');
 
-addpath('C:\Users\mvdm\Documents\GitHub\fieldtrip'); ft_defaults
-addpath('C:\Users\mvdm\Documents\GitHub\striatal-spike-rhythms\shared\io\ft');
-addpath('C:\Users\mvdm\Documents\GitHub\striatal-spike-rhythms\shared\io\neuralynx');
+%addpath('C:\Users\mvdm\Documents\GitHub\fieldtrip'); ft_defaults
+%addpath('C:\Users\mvdm\Documents\GitHub\striatal-spike-rhythms\shared\io\ft');
+%addpath('C:\Users\mvdm\Documents\GitHub\striatal-spike-rhythms\shared\io\neuralynx');
 
 
 
