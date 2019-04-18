@@ -72,11 +72,11 @@ end
 
 
 %% some averages
-%what = {'FSI', 'MSNonly', 'all'};
-what = {'all'};
+what = {'FSI', 'MSNonly'};
+%what = {'all'};
 ib = 1:0.5:100; % new frequency basis
 hh = 0.1; % histogram height
-ph = 2; % number of vertical subplots (controls height)
+ph = 1; % number of vertical subplots (controls height)
 c_scale = 0.25;
 
 for iW = 1:length(what)
@@ -228,26 +228,30 @@ for iW = 1:length(what)
     xlabel('frequency (Hz)'); grid on; title('PPC prop. significant');
     
     % phases -- need to get histogram for each frequency
-    this_phi = ALL.ppc_ang(keep_idx, :)';
-    this_phi = interp1(ALL.ppc_freq, this_phi, ib, 'nearest')';
-    for iB = length(ib):-1:1
-        [phi_hist(iB, :), pb] = hist(this_phi(this_ppcN(:, iB) > 1.96, iB), 6);
-    end
-    
-    subplot(334)
-    imagesc(ib,pb,phi_hist');
-    set(gca, 'LineWidth', 1, 'XLim', [1 100], 'TickDir', 'out', 'XTick', [1 10:10:100], ...
-        'XTickLabel', {'1', '', '20', '', '40', '', '60', '', '80', '', '100'}, ...
-        'FontSize', 18, 'YLim', [-pi pi], 'YTick', [-pi pi], 'YTickLabel', {'-pi', 'pi'});
-    xlabel('frequency (Hz)'); grid on; title('raw phase histogram');
-    
-    phi_histN = phi_hist ./ repmat(nansum(phi_hist, 2), [1 size(phi_hist, 2)]);
-    subplot(335)
-    imagesc(ib,pb,phi_histN');
-    set(gca, 'LineWidth', 1, 'XLim', [1 100], 'TickDir', 'out', 'XTick', [1 10:10:100], ...
-        'XTickLabel', {'1', '', '20', '', '40', '', '60', '', '80', '', '100'}, ...
-        'FontSize', 18, 'YLim', [-pi pi], 'YTick', [-pi pi], 'YTickLabel', {'-pi', 'pi'});
-    xlabel('frequency (Hz)'); grid on; title('normalized phase histogram');
+    if isfield(ALL, 'ppc_ang')
+        
+        this_phi = ALL.ppc_ang(keep_idx, :)';
+        this_phi = interp1(ALL.ppc_freq, this_phi, ib, 'nearest')';
+        for iB = length(ib):-1:1
+            [phi_hist(iB, :), pb] = hist(this_phi(this_ppcN(:, iB) > 1.96, iB), 6);
+        end
+        
+        subplot(334)
+        imagesc(ib,pb,phi_hist');
+        set(gca, 'LineWidth', 1, 'XLim', [1 100], 'TickDir', 'out', 'XTick', [1 10:10:100], ...
+            'XTickLabel', {'1', '', '20', '', '40', '', '60', '', '80', '', '100'}, ...
+            'FontSize', 18, 'YLim', [-pi pi], 'YTick', [-pi pi], 'YTickLabel', {'-pi', 'pi'});
+        xlabel('frequency (Hz)'); grid on; title('raw phase histogram');
+        
+        phi_histN = phi_hist ./ repmat(nansum(phi_hist, 2), [1 size(phi_hist, 2)]);
+        subplot(335)
+        imagesc(ib,pb,phi_histN');
+        set(gca, 'LineWidth', 1, 'XLim', [1 100], 'TickDir', 'out', 'XTick', [1 10:10:100], ...
+            'XTickLabel', {'1', '', '20', '', '40', '', '60', '', '80', '', '100'}, ...
+            'FontSize', 18, 'YLim', [-pi pi], 'YTick', [-pi pi], 'YTickLabel', {'-pi', 'pi'});
+        xlabel('frequency (Hz)'); grid on; title('normalized phase histogram');
+        
+    end % of phase histogram
     
     figure; % freq specific histograms (raw)
     
@@ -292,7 +296,7 @@ for iW = 1:length(what)
     
         end
         end
-        
+     
         % ppc
     
         temp = nanmean(this_ppcN(:, this_ib), 2);
@@ -327,6 +331,8 @@ for iW = 1:length(what)
     end
      
     % phase histograms
+    
+    if isfield(ALL, 'ppc_ang')
     figure;
     
     for iF = 1:length(fb)
@@ -358,6 +364,7 @@ for iW = 1:length(what)
         title(sprintf('%s (n = %d) raw PPC', fn{iF}, length(this_phi_band)));
         
     end % of freq bands
+    end
     
 end % of cell types
 
