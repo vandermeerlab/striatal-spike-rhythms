@@ -5,7 +5,7 @@ for iC = 1:cc
     figure;
     
     % session-specgram
-    if isfield(ALL, 'sessionTFR');
+    if isfield(ALL, 'sessionTFR')
         subplot(331);
         t_idx = nearest_idx3(tfr_baseline, ALL.sessionTFR(iC).time);
         baseline = sq(nanmean(ALL.sessionTFR(iC).powspctrm(:, :, t_idx(1):t_idx(2)), 3));
@@ -73,7 +73,7 @@ end
 
 %% some averages
 what = {'FSI', 'MSNonly'};
-%what = {'all'};
+
 ib = 1:0.5:100; % new frequency basis
 hh = 0.1; % histogram height
 ph = 1; % number of vertical subplots (controls height)
@@ -255,7 +255,7 @@ for iW = 1:length(what)
     
     figure; % freq specific histograms (raw)
     
-    fb = {[2.5 5.5], [6.5 9.5], [13.5 25.5], [39.5 64.5], [65.5 89.5]};
+    fb = {[2.5 5.5], [6.5 9.5], [13.5 25.5], [39.5 65.5], [65.5 90.5]};
     fn = {'delta', 'theta', 'beta', 'lgamma', 'hgamma'};
     nBins = 100;
     
