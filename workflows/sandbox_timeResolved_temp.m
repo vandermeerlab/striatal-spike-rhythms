@@ -2,10 +2,10 @@
 
 clear
 restoredefaultpath;
-%addpath(genpath('D:\My_Documents\GitHub\striatal-spike-rhythms\shared'));
-%addpath(genpath('D:\My_Documents\GitHub\striatal-spike-rhythms\chronux_2_12\spectral_analysis'));
-addpath(genpath('C:\Users\mvdm\Documents\GitHub\striatal-spike-rhythms\shared'));
-addpath(genpath('C:\Users\mvdm\Documents\GitHub\striatal-spike-rhythms\chronux_2_12\spectral_analysis'));
+addpath(genpath('D:\My_Documents\GitHub\striatal-spike-rhythms\shared'));
+addpath(genpath('D:\My_Documents\GitHub\striatal-spike-rhythms\chronux_2_12\spectral_analysis'));
+%addpath(genpath('C:\Users\mvdm\Documents\GitHub\striatal-spike-rhythms\shared'));
+%addpath(genpath('C:\Users\mvdm\Documents\GitHub\striatal-spike-rhythms\chronux_2_12\spectral_analysis'));
 
 % set default interpreter to non-LaTeX
 
@@ -17,9 +17,8 @@ cfg_master.minSpikes = 100; % only keep cells with at least this many spikes
 cfg_master.plot = 0; % produce output figure for each cell?
 cfg_master.wsize = 5; % length (s) of data analysis window either side of reward delivery
 cfg_master.pad = 0.5; % padding (s) of data analysis window on either side (to avoid edge effects)
-cfg_master.rats = {'R117', 'R119', 'R132'};
-%cfg_master.rats = {'R117'};
-cfg_master.nShuf = 20; % number of shuffles for spike-triggered spectrum and PPC
+cfg_master.rats = {'R117', 'R119', 'R131', 'R132'};
+cfg_master.nShuf = 0; % number of shuffles for spike-triggered spectrum and PPC
 cfg_master.spk_dt = 0.0025; % interspike interval for surrogate spike train used for spike-triggered spectrum pool
 
 [fd, fd_extra] = getDataPath(cfg_master);
@@ -154,48 +153,6 @@ for iS = 1:length(fd)
        end
     end
 
-    %% make spike-triggered spectrum pool for shuffles)
-    
-    fprintf('* Creating session-wide STS pool...\n');
-    
-    prev_path = set_ft_path;
-    spike = ft_read_spike(S.label{1}); % needs fixed read_mclust_t.m (edited D:\My_Documents\GitHub\fieldtrip\fileio\private\read_mclust_t.m to uint32)
-    spike.timestamp{1} = double(ft_lfp.hdr.FirstTimeStamp) + 10^6 * (ft_lfp.time{1}(1):cfg_master.spk_dt:ft_lfp.time{1}(end));
-
-    cfg           = [];
-    cfg.hdr       = ft_lfp_trl.hdr; % contains information for conversion of samples to timestamps
-    cfg.trlunit   = 'samples';
-    cfg.trl       = cfg_trl.trl;
-    spike_trl     = ft_spike_maketrials(cfg, spike);
-    
-    if length(spike_trl.timestamp{1}) == 0
-       error('Failed!'); 
-    end
-    
-    % get spike-triggered spectra
-    cfg              = [];
-    cfg.method       = 'mtmconvol';
-    cfg.foi          = 1:0.5:100;
-    cfg.t_ftimwin    = 7./cfg.foi; % 5 cycles per frequency
-    cfg.taper        = 'hanning';
-    cfg.channel      = ft_lfp_trl.label(1);
-    cfg.rejectsaturation = 'no';
-    sess.stsConvol        = ft_spiketriggeredspectrum(cfg, ft_lfp_trl, spike_trl);
-%     
-%     %% compute session-wide event triggered spectrogram
-%     cfg              = [];
-%     cfg.output       = 'pow';
-%     cfg.method       = 'mtmconvol';
-%     cfg.taper        = 'hanning';
-%     cfg.foi          = 1:100; % frequencies of interest
-%     cfg.t_ftimwin    = ones(size(cfg.foi)).*0.5;  % window size: fixed at 0.5s
-%     cfg.toi          = -5:0.1:5; % times of interest
-%     
-%     session_TFR = ft_freqanalysis(cfg, ft_lfp_trl);
-%     session_TFR.powspctrm = 10*log10(session_TFR.powspctrm);
-%     
-   path(prev_path);
-
     %%%%%%%%%%%%%%%%%%%%%%%%%%%%%
     %% main loop across cells %%%
     %%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -231,10 +188,6 @@ for iS = 1:length(fd)
             continue;
         end
         
-        % hack to make output sizes consistent
-        tr_data(1).times = cat(1, 0, tr_data(1).times);
-        tr_data(end).times = cat(1, tr_data(end).times, 2*cfg_master.wsize + 2*cfg_master.pad - eps);
-               
         % track some things about this cell
         ALL.cellType(cc) = S.usr.cell_type(iC);
         ALL.cellLabel{cc} = S.label(iC);
@@ -242,99 +195,7 @@ for iS = 1:length(fd)
         ALL.ID(cc) = s_out.cq.id(iC); ALL.Lr(cc) = s_out.cq.lr(iC); ALL.ampl(cc) = s_out.cq.ampl(iC);              
         ALL.sessno(cc) = iS;
         ALL.ratID(cc) = fd_extra.ratID_num(iS);
-        
-        %ALL.sessionTFR(cc, :, :) = session_TFR;
-        
-        %%%%%%%%%%%%%%%%%%%%%%
-        %%% spike spectrum %%%
-        %%%%%%%%%%%%%%%%%%%%%%
-%         cfg_ss.params = []; cfg_ss.params.Fs = 200; cfg_ss.params.tapers = [6 11];
-%         cfg_ss.params.pad = -1;
-%         
-%         [P,F,R] = mtspectrumpt(tr_data, cfg_ss.params);
-%         P = nanmean(P, 2) ./ spk_count;
-%         keep = F >= 1;
-%         P = P(keep); F = F(keep);
-%         
-%         ALL.spkSpec(cc,:) = P; ALL.spkSpec_freq = F; % spike spectrum
-%         
-        %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-        %%% shuffles for spike spectrum %%%
-        %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%         clear this_shufP this_shufPtr;
-%         for iShuf = cfg_master.nShuf:-1:1
-%             
-%             fprintf('Spike spectrum shuffle %d...\n', iShuf);
-%             
-%             % shuffle spike train
-%             clear this_tr_data;
-%             for iT = 1:length(reward_t)
-%                 this_nspk = length(tr_data(iT).times); 
-%                 if iT == 1 | iT == length(reward_t), this_spk = this_nspk -1; end % remove previously inserted hack spikes
-%                 spk_shuf = rand(this_nspk, 1);
-%                 spk_shuf = spk_shuf .* (2*cfg_master.wsize + 2*cfg_master.pad - eps); % scale to trial length
-%                 this_tr_data(iT).times = sort(spk_shuf);
-%             end
-%             
-%             % hack to make output sizes consistent
-%             this_tr_data(1).times = cat(1, 0, this_tr_data(1).times);
-%             this_tr_data(end).times = cat(1, this_tr_data(end).times, 2*cfg_master.wsize + 2*cfg_master.pad - eps);
-%             
-%             [P,F,R] = mtspectrumpt(this_tr_data, cfg_ss.params);
-%             P = nanmean(P, 2) ./ spk_count;
-%             keep = F >= 1;
-%             P = P(keep);
-%             
-%             this_shufP(iShuf,:) = P;
-%             
-%             %%% could add time-resolved spike spectrum shuffles here %%%
-%             P = mtspecgrampt(this_tr_data, [1 0.1], cfg_ss.params);
-%             P = sq(nanmean(P, 3));
-%             this_shufPtr(iShuf,:,:) = P;
-%             
-%         end % of shuffles
-%         
-%         ALL.spkSpec_shufmean(cc,:) = nanmean(this_shufP);
-%         ALL.spkSpec_shufSD(cc,:) = nanstd(this_shufP);
-%         
-%         ALL.trP_shufmean(cc,:,:) = sq(nanmean(this_shufPtr, 1));
-%         ALL.trP_shufSD(cc,:,:) = sq(nanstd(this_shufPtr, [], 1));
-%               
-%         %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%         %%% time-resolved spike spectrum %%%
-%         %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%         [P, tr_time, tr_freq] = mtspecgrampt(tr_data, [1 0.1], cfg_ss.params);
-%         Pavg = sq(nanmean(P, 3)); %Pavg = 10*log10(Pavg);
-%         
-%         %ALL.trP{cc} = Pavg;
-%         %ALL.tr_time{cc} = tr_time; ALL.tr_freq{cc} = tr_freq;
-%         
-% %         if isfield(ALL, 'trP') % deal with annoying possible size mismatch in mtspecgramt output
-% %             if size(Pavg, 1) ~= size(ALL.trP, 2)
-% %                 ALL.trP(cc,:,:) = NaN;
-% %                 disp('WARNING: size mismatch in mtspecgrampt output. NaNs inserted instead.');
-% %             else
-%                 ALL.trP(cc,:,:) = Pavg;
-%                 ALL.tr_time = tr_time; ALL.tr_freq = tr_freq;
-% %             end
-% %         else
-% %             ALL.trP(cc,:,:) = Pavg;
-% %             ALL.tr_time = tr_time; ALL.tr_freq = tr_freq;
-% %         end
-% 
-%         % spike histogram
-%         all_spk = [];
-%         for iT = 1:length(tr_data)
-%             all_spk = cat(1,all_spk,tr_data(iT).times);
-%         end
-%         %bin_edges = 0.25:0.1:2*cfg_master.wsize + 2*cfg_master.pad - 0.25;
-%         bin_start = 0:0.1:2*cfg_master.wsize + 2*cfg_master.pad - 1;
-%         bin_end = 1:0.1:2*cfg_master.wsize + 2*cfg_master.pad;
-%         
-%         for iB = 1:length(bin_start)
-%             ALL.trP_hist(cc, iB) = sum(all_spk <= bin_end(iB) & all_spk > bin_start(iB));
-%         end
-       
+              
         %%%%%%%%%%%
         %%% ppc %%%
         %%%%%%%%%%%
@@ -384,78 +245,9 @@ for iS = 1:length(fd)
            error('PPC failed!'); 
         end
         
-        % shuffled ppc
-        clear this_shufPPC this_shufPPCtr this_shuf_ppc_ang this_shuf_ppc_r;
-        disp('Computing PPC shuffles...');
-        for iShuf = cfg_master.nShuf:-1:1
-        
-            pool_count = length(sess.stsConvol.time{1}); % number of spikes in pool
-            keep_idx = randperm(pool_count);
-            keep_idx = keep_idx(1:length(spike.timestamp{1})); % number of actually observed spikes
-            
-            this_sts = stsConvol; % this actual cell's STS
-            this_sts.fourierspctrm{1} = sess.stsConvol.fourierspctrm{1}(keep_idx,:,:); % replace with random STS
-            %this_sts.time{1} = this_sts.time{1}(keep_idx);
-            %this_sts.trial{1} = this_sts.trial{1}(keep_idx);
-            
-            cfg               = [];
-            cfg.method        = 'ppc0'; % compute the Pairwise Phase Consistency
-            cfg.avgoverchan   = 'unweighted'; % weight spike-LFP phases irrespective of LFP power
-            cfg.timwin        = 'all'; % compute over all available spikes in the window
-            this_sts_stat     = ft_spiketriggeredspectrum_stat(cfg, this_sts);
-            
-            this_shufPPC(iShuf, :) = this_sts_stat.ppc0';
-            
-            % shuffled angle
-            cfg.method        = 'ang';
-            cfg.foi           = 'all';
-            this_sts_stat     = ft_spiketriggeredspectrum_stat(cfg, this_sts);
-            
-            this_shuf_ppc_ang(iShuf, :) = this_sts_stat.ang;
-            
-            % shuffled r
-            cfg.method        = 'ral';
-            cfg.foi           = 'all';
-            this_sts_stat     = ft_spiketriggeredspectrum_stat(cfg, this_sts);
-            
-            this_shuf_ppc_r(iShuf, :) = this_sts_stat.ral;
-            
-            %%% could add shuffled version for kicks %%%
-            %cfg.winstepsize    = 0.01; % step size of the window that we slide over time
-            %cfg.timwin         = 0.5; % duration of sliding window
-            %this_tr_stat       = ft_spiketriggeredspectrum_stat(cfg, this_sts);
-        
-            %this_shufPPCtr(iShuf, : ,:) = squeeze(this_tr_stat.ppc0);
-        end
-        
-        ALL.ppc_shufmean(cc,:) = nanmean(this_shufPPC);
-        ALL.ppc_shufSD(cc,:) = nanstd(this_shufPPC);
-        
-        ALL.r_shufmean(cc,:) = nanmean(this_shuf_ppc_r);
-        ALL.r_shufSD(cc,:) = nanstd(this_shuf_ppc_r);
-              
-%         ALL.trPPC_shufmean(cc,:,:) = squeeze(nanmean(this_shufPPCtr, 1));
-%         ALL.trPPC_shufSD(cc,:,:) = squeeze(nanstd(this_shufPPCtr, [], 1));
-%         
-%         %%%%%%%%%%%%%%%%%%%%%%%%%
-%         %%% time-resolved ppc %%%
-%         %%%%%%%%%%%%%%%%%%%%%%%%%
-%         cfg                = [];
-%         cfg.method        = 'ppc0'; % compute the Pairwise Phase Consistency
-%         cfg.spikechannel  = stsConvol.label;
-%         cfg.channel       = stsConvol.lfplabel; % selected LFP channels
-%         cfg.avgoverchan    = 'unweighted';
-%         cfg.winstepsize    = 0.01; % step size of the window that we slide over time
-%         cfg.timwin         = 0.5; % duration of sliding window
-%         statSts            = ft_spiketriggeredspectrum_stat(cfg, stsConvol);
-%         
-%         ALL.trPPC(cc,:,:) = squeeze(statSts.ppc0);
-%         ALL.trPPCn(cc,:,:) = squeeze(statSts.nspikes);
-%         ALL.trPPCtime = statSts.time; ALL.trPPCfreq = statSts.freq; 
-%         
-%         %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%         %%% spike-triggered average %%%
-%         %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+        %%%%%%%%%%%
+        %%% STA %%%
+        %%%%%%%%%%%
         data_sta = ft_appendspike([], ft_lfp, spike_trl);
         
         cfg              = [];
@@ -491,12 +283,9 @@ for iS = 1:length(fd)
         if any(ALL.STAa(cc,:) > pi)
             error('Impossible angle.')
         end
-        
-        
+              
         path(prev_path);
-        ALL.ppc_shuf_ang(cc,:) = circmean(this_shuf_ppc_ang);
-  
-        
+ 
         cc = cc + 1; % advance cell count
     end % of cell loop
     
@@ -510,13 +299,13 @@ function prev_path = set_ft_path()
 prev_path = path;
 
 restoredefaultpath;
-%addpath('D:\My_Documents\GitHub\fieldtrip'); ft_defaults
-%addpath('D:\My_Documents\GitHub\striatal-spike-rhythms\shared\io\ft');
-%addpath('D:\My_Documents\GitHub\striatal-spike-rhythms\shared\io\neuralynx');
+addpath('D:\My_Documents\GitHub\fieldtrip'); ft_defaults
+addpath('D:\My_Documents\GitHub\striatal-spike-rhythms\shared\io\ft');
+addpath('D:\My_Documents\GitHub\striatal-spike-rhythms\shared\io\neuralynx');
 
-addpath('C:\Users\mvdm\Documents\GitHub\fieldtrip'); ft_defaults
-addpath('C:\Users\mvdm\Documents\GitHub\striatal-spike-rhythms\shared\io\ft');
-addpath('C:\Users\mvdm\Documents\GitHub\striatal-spike-rhythms\shared\io\neuralynx');
+%addpath('C:\Users\mvdm\Documents\GitHub\fieldtrip'); ft_defaults
+%addpath('C:\Users\mvdm\Documents\GitHub\striatal-spike-rhythms\shared\io\ft');
+%addpath('C:\Users\mvdm\Documents\GitHub\striatal-spike-rhythms\shared\io\neuralynx');
 
 
 

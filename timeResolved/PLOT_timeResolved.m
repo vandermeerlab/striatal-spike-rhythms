@@ -72,8 +72,8 @@ end
 
 
 %% some averages
-%what = {'FSI', 'MSNonly', 'all'};
-what = {'all'};
+what = {'FSI', 'MSNonly', 'all'};
+%what = {'all'};
 
 ib = 1:0.5:100; % new frequency basis
 hh = 0.1; % histogram height
@@ -127,9 +127,6 @@ for iW = 1:length(what)
     % ppc
     this_ppc = ALL.ppc(keep_idx, :)';
     this_ppc = interp1(ALL.ppc_freq, this_ppc, ib, 'linear')';
-    
-    this_ppcN = (ALL.ppc(keep_idx, :) - ALL.ppc_shufmean(keep_idx, :)) ./ ALL.ppc_shufSD(keep_idx, :);
-    this_ppcN = interp1(ALL.ppc_freq, this_ppcN', ib, 'linear')';
     
     as = subplot(ph, 3, 2);
     ax1 = axes('Position', [as.Position(1) as.Position(2) + hh * as.Position(4) as.Position(3) (1-hh) * as.Position(4)]); 
@@ -193,6 +190,10 @@ for iW = 1:length(what)
     grid on; xlabel('frequency (Hz)'); 
     end
     
+    if isfield(ALL, 'ppc_shufmean')
+    this_ppcN = (ALL.ppc(keep_idx, :) - ALL.ppc_shufmean(keep_idx, :)) ./ ALL.ppc_shufSD(keep_idx, :);
+    this_ppcN = interp1(ALL.ppc_freq, this_ppcN', ib, 'linear')';
+        
     as = subplot(ph, 3, 2);
     ax1 = axes('Position', [as.Position(1) as.Position(2) + 0.1 * as.Position(4) as.Position(3) 0.9 * as.Position(4)]); 
     ax2 = axes('Position', [as.Position(1) as.Position(2) as.Position(3) 0.1 * as.Position(4)]);
@@ -208,47 +209,78 @@ for iW = 1:length(what)
         'XTickLabel', {'1', '', '20', '', '40', '', '60', '', '80', '', '100'}, ...
         'FontSize', 18, 'YTick', []);
     grid on; xlabel('frequency (Hz)'); 
-    
+    end
     
     figure; % histograms/counts
     
+    
     if isfield(ALL, 'spkSpec')
-    subplot(331)
-    hb = bar(ib, nanmean(this_ssN > 1.96), 'k'); box off; set(hb, 'EdgeColor', 'none');
-    set(gca, 'LineWidth', 1, 'XLim', [1 100], 'TickDir', 'out', 'XTick', [1 10:10:100], ...
-        'XTickLabel', {'1', '', '20', '', '40', '', '60', '', '80', '', '100'}, ...
-        'FontSize', 18, 'YLim', [0 1], 'YTick', 0:0.25:1, 'YTickLabel', {'0','','0.5','','1'});
-    xlabel('frequency (Hz)'); grid on; title('SS prop. significant');
+        subplot(331)
+        hb = bar(ib, nanmean(this_ssN > 1.96), 'k'); box off; set(hb, 'EdgeColor', 'none');
+        set(gca, 'LineWidth', 1, 'XLim', [1 100], 'TickDir', 'out', 'XTick', [1 10:10:100], ...
+            'XTickLabel', {'1', '', '20', '', '40', '', '60', '', '80', '', '100'}, ...
+            'FontSize', 18, 'YLim', [0 1], 'YTick', 0:0.25:1, 'YTickLabel', {'0','','0.5','','1'});
+        xlabel('frequency (Hz)'); grid on; title('SS prop. significant');
     end
     
-    subplot(332)
-    hb = bar(ib, nanmean(this_ppcN > 1.96), 'k'); box off; set(hb, 'EdgeColor', 'none');
-    set(gca, 'LineWidth', 1, 'XLim', [1 100], 'TickDir', 'out', 'XTick', [1 10:10:100], ...
-        'XTickLabel', {'1', '', '20', '', '40', '', '60', '', '80', '', '100'}, ...
-        'FontSize', 18, 'YLim', [0 1], 'YTick', 0:0.25:1, 'YTickLabel', {'0','','0.5','','1'});
-    xlabel('frequency (Hz)'); grid on; title('PPC prop. significant');
     
-    % phases -- need to get histogram for each frequency
+    if isfield(ALL, 'ppc_shufmean')
+        subplot(332)
+        hb = bar(ib, nanmean(this_ppcN > 1.96), 'k'); box off; set(hb, 'EdgeColor', 'none');
+        set(gca, 'LineWidth', 1, 'XLim', [1 100], 'TickDir', 'out', 'XTick', [1 10:10:100], ...
+            'XTickLabel', {'1', '', '20', '', '40', '', '60', '', '80', '', '100'}, ...
+            'FontSize', 18, 'YLim', [0 1], 'YTick', 0:0.25:1, 'YTickLabel', {'0','','0.5','','1'});
+        
+        xlabel('frequency (Hz)'); grid on; title('PPC prop. significant');
+    end
+      
+    % phases -- need to get histogram for each frequency (PPC version)
     this_phi = ALL.ppc_ang(keep_idx, :)';
     this_phi = interp1(ALL.ppc_freq, this_phi, ib, 'nearest')';
-    for iB = length(ib):-1:1
-        [phi_hist(iB, :), pb] = hist(this_phi(this_ppcN(:, iB) > 1.96, iB), 6);
+    
+    this_STAa = ALL.STAa(keep_idx, :)';
+    this_STAa = interp1(ALL.STAp_freq, this_STAa, ib, 'linear')';
+    
+    this_r = ALL.ppc_r(keep_idx, :)';
+    this_r = interp1(ALL.ppc_freq, this_r, ib, 'linear')';
+    
+    phi_bin_edges = -pi:pi/3:pi; phi_bin_centers = phi_bin_edges(1:end-1) + mode(diff(phi_bin_edges))/2;
+    clear phi_hist phi_hist_STA;
+    for iB = size(this_phi, 2):-1:1
+        phi_hist(iB, :) = histc(this_phi(this_ppcN(:, iB) > 1.96, iB), phi_bin_edges);
+        phi_hist_STA(iB, :) = histc(this_STAa(this_ppcN(:, iB) > 1.96, iB), phi_bin_edges);
     end
+    phi_hist = phi_hist(:, 1:end-1); phi_hist_STA = phi_hist_STA(:, 1:end-1);
     
     subplot(334)
-    imagesc(ib,pb,phi_hist');
+    imagesc(ib, phi_bin_centers, phi_hist');
     set(gca, 'LineWidth', 1, 'XLim', [1 100], 'TickDir', 'out', 'XTick', [1 10:10:100], ...
         'XTickLabel', {'1', '', '20', '', '40', '', '60', '', '80', '', '100'}, ...
-        'FontSize', 18, 'YLim', [-pi pi], 'YTick', [-pi pi], 'YTickLabel', {'-pi', 'pi'});
-    xlabel('frequency (Hz)'); grid on; title('raw phase histogram');
+        'FontSize', 18, 'YLim', [-pi pi], 'YTick', [phi_bin_centers(1) phi_bin_centers(end)], 'YTickLabel', {'-pi', 'pi'});
+    xlabel('frequency (Hz)'); grid on; title('raw phase histogram (PPC)'); axis tight;
     
     phi_histN = phi_hist ./ repmat(nansum(phi_hist, 2), [1 size(phi_hist, 2)]);
     subplot(335)
     imagesc(ib,pb,phi_histN');
     set(gca, 'LineWidth', 1, 'XLim', [1 100], 'TickDir', 'out', 'XTick', [1 10:10:100], ...
         'XTickLabel', {'1', '', '20', '', '40', '', '60', '', '80', '', '100'}, ...
-        'FontSize', 18, 'YLim', [-pi pi], 'YTick', [-pi pi], 'YTickLabel', {'-pi', 'pi'});
-    xlabel('frequency (Hz)'); grid on; title('normalized phase histogram');
+        'FontSize', 18, 'YLim', [-pi pi], 'YTick', [phi_bin_centers(1) phi_bin_centers(end)], 'YTickLabel', {'-pi', 'pi'});
+    xlabel('frequency (Hz)'); grid on; title('normalized phase histogram (PPC)'); axis tight;
+    
+    subplot(337)
+    imagesc(ib,pb,phi_hist_STA');
+    set(gca, 'LineWidth', 1, 'XLim', [1 100], 'TickDir', 'out', 'XTick', [1 10:10:100], ...
+        'XTickLabel', {'1', '', '20', '', '40', '', '60', '', '80', '', '100'}, ...
+        'FontSize', 18, 'YLim', [-pi pi], 'YTick', [phi_bin_centers(1) phi_bin_centers(end)], 'YTickLabel', {'-pi', 'pi'});
+    xlabel('frequency (Hz)'); grid on; title('raw phase histogram (STA)'); axis tight;
+    
+    phi_histN = phi_hist_STA ./ repmat(nansum(phi_hist_STA, 2), [1 size(phi_hist_STA, 2)]);
+    subplot(338)
+    imagesc(ib,pb,phi_histN');
+    set(gca, 'LineWidth', 1, 'XLim', [1 100], 'TickDir', 'out', 'XTick', [1 10:10:100], ...
+        'XTickLabel', {'1', '', '20', '', '40', '', '60', '', '80', '', '100'}, ...
+        'FontSize', 18, 'YLim', [-pi pi], 'YTick', [phi_bin_centers(1) phi_bin_centers(end)], 'YTickLabel', {'-pi', 'pi'});
+    xlabel('frequency (Hz)'); grid on; title('normalized phase histogram (STA)'); axis tight;
     
     figure; % freq specific histograms (raw)
     
@@ -262,46 +294,46 @@ for iW = 1:length(what)
         
         % ss
         if isfield(ALL, 'spkSpec')
-
-        temp = nanmean(this_ssN(:, this_ib), 2);
-        keep_idx = temp > 1.96;
-        
-        if sum(keep_idx) > 0
-        
-            ss_avg = nanmean(this_ss(keep_idx, this_ib), 2); % could consider doing max...
-            bin_edgesLog = linspace(floor(10*log10(min(ss_avg)))/10, ceil(10*log10(max(ss_avg)))/10, nBins);
-            bin_centersLog = bin_edgesLog(1:end-1) + mode(diff(bin_edgesLog)) ./ 2;
-            this_h = histc(log10(ss_avg), bin_edgesLog); this_h = this_h(1:end-1);
             
-            subplot(4, 5, iF)
-            hb = bar(bin_centersLog, this_h, 'k'); box off; set(hb, 'EdgeColor', 'none');
-            set(gca, 'LineWidth', 1, 'TickDir', 'out', ...
-                'FontSize', 18), ...
-                xlabel('log power'); title(sprintf('%s ss (n = %d, %.2f%%)', fn{iF}, sum(keep_idx), (sum(keep_idx) ./ nCells) .* 100));
+            temp = nanmean(this_ssN(:, this_ib), 2);
+            sig_idx = temp > 1.96;
             
-            ss_avg = nanmean(this_ssN(keep_idx, this_ib), 2); % could consider doing max...
-            %[this_h, this_b] = hist(ss_avg, nBins);
-            bin_edgesLog = linspace(floor(10*log10(min(ss_avg)))/10, ceil(10*log10(max(ss_avg)))/10, nBins);
-            bin_centersLog = bin_edgesLog(1:end-1) + mode(diff(bin_edgesLog)) ./ 2;
-            this_h = histc(log10(ss_avg), bin_edgesLog); this_h = this_h(1:end-1);
-            
-            subplot(4, 5, iF+5)
-            hb = bar(bin_centersLog, this_h, 'k'); box off; set(hb, 'EdgeColor', 'none');
-            set(gca, 'LineWidth', 1, 'TickDir', 'out', ...
-                'FontSize', 18), ...
-                xlabel('log power (z)'); title(sprintf('%s ss (n = %d, %.2f%%)', fn{iF}, sum(keep_idx), (sum(keep_idx) ./ nCells) .* 100));
-    
-        end
+            if sum(sig_idx) > 0
+                
+                ss_avg = nanmean(this_ss(sig_idx, this_ib), 2); % could consider doing max...
+                bin_edgesLog = linspace(floor(10*log10(min(ss_avg)))/10, ceil(10*log10(max(ss_avg)))/10, nBins);
+                bin_centersLog = bin_edgesLog(1:end-1) + mode(diff(bin_edgesLog)) ./ 2;
+                this_h = histc(log10(ss_avg), bin_edgesLog); this_h = this_h(1:end-1);
+                
+                subplot(4, 5, iF)
+                hb = bar(bin_centersLog, this_h, 'k'); box off; set(hb, 'EdgeColor', 'none');
+                set(gca, 'LineWidth', 1, 'TickDir', 'out', ...
+                    'FontSize', 18), ...
+                    xlabel('log power'); title(sprintf('%s ss (n = %d, %.2f%%)', fn{iF}, sum(sig_idx), (sum(sig_idx) ./ nCells) .* 100));
+                
+                ss_avg = nanmean(this_ssN(sig_idx, this_ib), 2); % could consider doing max...
+                %[this_h, this_b] = hist(ss_avg, nBins);
+                bin_edgesLog = linspace(floor(10*log10(min(ss_avg)))/10, ceil(10*log10(max(ss_avg)))/10, nBins);
+                bin_centersLog = bin_edgesLog(1:end-1) + mode(diff(bin_edgesLog)) ./ 2;
+                this_h = histc(log10(ss_avg), bin_edgesLog); this_h = this_h(1:end-1);
+                
+                subplot(4, 5, iF+5)
+                hb = bar(bin_centersLog, this_h, 'k'); box off; set(hb, 'EdgeColor', 'none');
+                set(gca, 'LineWidth', 1, 'TickDir', 'out', ...
+                    'FontSize', 18), ...
+                    xlabel('log power (z)'); title(sprintf('%s ss (n = %d, %.2f%%)', fn{iF}, sum(sig_idx), (sum(sig_idx) ./ nCells) .* 100));
+                
+            end
         end
         
         % ppc
     
         temp = nanmean(this_ppcN(:, this_ib), 2);
-        keep_idx = temp > 1.96;
+        sig_idx = temp > 1.96;
     
-        if sum(keep_idx) > 0
+        if sum(sig_idx) > 0
         
-            ss_avg = nanmean(this_ppc(keep_idx, this_ib), 2); % could consider doing max...
+            ss_avg = nanmean(this_ppc(sig_idx, this_ib), 2); % could consider doing max...
             bin_edgesLog = linspace(floor(10*log10(min(ss_avg)))/10, ceil(10*log10(max(ss_avg)))/10, nBins);
             bin_centersLog = bin_edgesLog(1:end-1) + mode(diff(bin_edgesLog)) ./ 2;
             this_h = histc(log10(ss_avg), bin_edgesLog); this_h = this_h(1:end-1);
@@ -310,9 +342,9 @@ for iW = 1:length(what)
             hb = bar(bin_centersLog, this_h, 'k'); box off; set(hb, 'EdgeColor', 'none');
             set(gca, 'LineWidth', 1, 'TickDir', 'out', ...
                 'FontSize', 18), ...
-                xlabel('log PPC'); title(sprintf('%s ppc (n = %d, %.2f%%)', fn{iF}, sum(keep_idx), (sum(keep_idx) ./ nCells) .* 100));
+                xlabel('log PPC'); title(sprintf('%s ppc (n = %d, %.2f%%)', fn{iF}, sum(sig_idx), (sum(sig_idx) ./ nCells) .* 100));
                           
-            ss_avg = nanmean(this_ppcN(keep_idx, this_ib), 2); % could consider doing max...
+            ss_avg = nanmean(this_ppcN(sig_idx, this_ib), 2); % could consider doing max...
             bin_edgesLog = linspace(floor(10*log10(min(ss_avg)))/10, ceil(10*log10(max(ss_avg)))/10, nBins);
             bin_centersLog = bin_edgesLog(1:end-1) + mode(diff(bin_edgesLog)) ./ 2;
             this_h = histc(log10(ss_avg), bin_edgesLog); this_h = this_h(1:end-1);
@@ -321,13 +353,13 @@ for iW = 1:length(what)
             hb = bar(bin_centersLog, this_h, 'k'); box off; set(hb, 'EdgeColor', 'none');
             set(gca, 'LineWidth', 1, 'TickDir', 'out', ...
                 'FontSize', 18), ...
-                xlabel('log PPC (z)'); title(sprintf('%s ppcN (n = %d, %.2f%%)', fn{iF}, sum(keep_idx), (sum(keep_idx) ./ nCells) .* 100));
+                xlabel('log PPC (z)'); title(sprintf('%s ppcN (n = %d, %.2f%%)', fn{iF}, sum(sig_idx), (sum(sig_idx) ./ nCells) .* 100));
                
         end
     
     end
      
-    % phase histograms
+    % phase histograms using PPC measures
     figure;
     
     for iF = 1:length(fb)
@@ -336,18 +368,19 @@ for iW = 1:length(what)
         
         % find significant PPC cells
         temp = nanmean(this_ppcN(:, this_ib), 2);
-        keep_idx = temp > 1.96;
+        %temp = max(this_ppcN(:, this_ib), [], 2);
+        sig_idx = temp > 1.96; % idx of significant cells
         
-        % get mean phase and raw PPC for significant cells
-        % NOTE: could instead find max PPC and get corresponding angle
-        % (only if mean is significant)
-        %this_phi_band = circmean(this_phi(keep_idx, this_ib)');
-        
+        % find angle for largest ppc within band
         %this_ppc_band = nanmean(this_ppc(:, this_ib), 2);
-        [this_ppc_band, temp_idx] = max(this_ppc(keep_idx, this_ib)');
-        this_phi_band = this_phi(keep_idx, temp_idx);
+        [this_ppc_band, temp_idx] = max(this_ppc(sig_idx, this_ib)');
+        this_phi_mat = this_phi(sig_idx, :);
+        clear this_phi_band
+        for iC = size(this_phi_mat, 1):-1:1 % get phi at freq with largest PPC
+            this_phi_band(iC) = this_phi_mat(iC, temp_idx(iC));
+        end
         
-        % plot
+        % polar plot with length equal to ppc
         subplot(4, 5, iF);
         for iC = 1:length(this_ppc_band)
             %h = polarplot([0 this_phi_band(iC)], [0 log(this_ppc_band(iC))], '-k'); set(h, 'LineWidth', 1);
@@ -358,7 +391,88 @@ for iW = 1:length(what)
         set(gca, 'FontSize', 18, 'RTickLabel', {}, 'ThetaTickLabel', {});
         title(sprintf('%s (n = %d) raw PPC', fn{iF}, length(this_phi_band)));
         
+        % regular histograms (not scaled by PPC)
+        subplot(4, 5, iF+5);
+        phi_bin_edges = -pi:pi/6:pi; phi_bin_centers = phi_bin_edges(1:end-1) + mode(diff(phi_bin_edges))/2;
+        this_hist = histc(this_phi_band, phi_bin_edges); this_hist = this_hist(1:end-1);
+        hb = bar(phi_bin_centers, this_hist, 'k'); box off; set(hb, 'EdgeColor', 'none'); set(hb,'BarWidth', 1)
+        set(gca, 'XTick', phi_bin_edges, 'XTickLabel', []); axis tight;
+        set(gca, 'LineWidth', 1, 'TickDir', 'out', 'FontSize', 18);
+        xlabel('phi');
+                       
+        
+        % z-scored PPC
+        subplot(4, 5, iF+10);
+        [this_ppc_band, temp_idx] = max(this_ppcN(sig_idx, this_ib)');
+        this_phi_mat = this_phi(sig_idx, :);
+        clear this_phi_band
+        for iC = size(this_phi_mat, 1):-1:1 % get phi at freq with largest PPC
+            this_phi_band(iC) = this_phi_mat(iC, temp_idx(iC));
+        end
+
+        for iC = 1:length(this_ppc_band)
+            %h = polarplot([0 this_phi_band(iC)], [0 log(this_ppc_band(iC))], '-k'); set(h, 'LineWidth', 1);
+            h = polarplot([0 this_phi_band(iC)], [0 this_ppc_band(iC)], '-k'); set(h, 'LineWidth', 1);
+            hold on;
+        end
+        %set(gca, 'FontSize', 18, 'RLim', [0 0.1], 'RTickLabel', {}, 'ThetaTickLabel', {}); 
+        set(gca, 'FontSize', 18, 'RTickLabel', {}, 'ThetaTickLabel', {});
+        title(sprintf('%s (n = %d) PPCz', fn{iF}, length(this_phi_band)));
+        
+        % regular histograms (not shown by PPC)
+        subplot(4, 5, iF+15);
+        phi_bin_edges = -pi:pi/6:pi; phi_bin_centers = phi_bin_edges(1:end-1) + mode(diff(phi_bin_edges))/2;
+        this_hist = histc(this_phi_band, phi_bin_edges); this_hist = this_hist(1:end-1);
+        hb = bar(phi_bin_centers, this_hist, 'k'); box off; set(hb, 'EdgeColor', 'none'); set(hb,'BarWidth', 1)
+        set(gca, 'XTick', phi_bin_edges, 'XTickLabel', []); axis tight;
+        set(gca, 'LineWidth', 1, 'TickDir', 'out', 'FontSize', 18);
+        xlabel('phi');
+        
     end % of freq bands
+    
+    % phase histograms using STA and r   
+    figure;
+    
+    for iF = 1:length(fb)
+        
+        this_ib = find(ib >= fb{iF}(1) & ib < fb{iF}(2));
+        
+        % find significant PPC cells
+        temp = nanmean(this_ppcN(:, this_ib), 2);
+        %temp = max(this_ppcN(:, this_ib), [], 2);
+        sig_idx = temp > 1.96; % idx of significant cells
+        
+        % find angle for largest ppc within band
+        %this_ppc_band = nanmean(this_ppc(:, this_ib), 2);
+        [this_ppc_band, temp_idx] = max(this_ppc(sig_idx, this_ib)');
+        this_phi_mat = this_STAa(sig_idx, :);
+        clear this_phi_band
+        for iC = size(this_phi_mat, 1):-1:1 % get phi at freq with largest PPC
+            this_phi_band(iC) = this_phi_mat(iC, temp_idx(iC));
+        end
+        
+        % polar plot with length equal to ppc
+        subplot(4, 5, iF);
+        for iC = 1:length(this_ppc_band)
+            %h = polarplot([0 this_phi_band(iC)], [0 log(this_ppc_band(iC))], '-k'); set(h, 'LineWidth', 1);
+            h = polarplot([0 this_phi_band(iC)], [0 this_ppc_band(iC)], '-k'); set(h, 'LineWidth', 1);
+            hold on;
+        end
+        %set(gca, 'FontSize', 18, 'RLim', [0 0.1], 'RTickLabel', {}, 'ThetaTickLabel', {});
+        set(gca, 'FontSize', 18, 'RTickLabel', {}, 'ThetaTickLabel', {});
+        title(sprintf('%s (n = %d) raw |r|', fn{iF}, length(this_phi_band)));
+        
+        % regular histograms (not shown by PPC)
+        subplot(4, 5, iF+5);
+        phi_bin_edges = -pi:pi/6:pi; phi_bin_centers = phi_bin_edges(1:end-1) + mode(diff(phi_bin_edges))/2;
+        this_hist = histc(this_phi_band, phi_bin_edges); this_hist = this_hist(1:end-1);
+        hb = bar(phi_bin_centers, this_hist, 'k'); box off; set(hb, 'EdgeColor', 'none'); set(hb,'BarWidth', 1)
+        set(gca, 'XTick', phi_bin_edges, 'XTickLabel', []); axis tight;
+        set(gca, 'LineWidth', 1, 'TickDir', 'out', 'FontSize', 18);
+        xlabel('phi');
+        
+    end % of freq bands
+    
     
 end % of cell types
 
