@@ -1,5 +1,7 @@
-function sd = rhythmGLMfit(cfg_in)
+function sd = rhythmGLMfit2(cfg_in)
 % GLM for spike prediction with LFP features
+%
+% as rhythmGLMfit, but add exclusion of duplicate cells
 %
 % This top-level function fits a number of GLMs to single session spike train data.
 %
@@ -20,12 +22,6 @@ function sd = rhythmGLMfit(cfg_in)
 % - for each model:
 %   * plot error across cells
 %   * plot error across time to reward (tuning curve)
-%
-% output error is stored in the sd variable, which can be saved for a later
-% collector to aggregate across sessions.
-%
-% maybe storing errors is overkill though: too much space, could store
-% tuning curves for various things instead
 %
 % run this with data session to analyze as the working folder.
 %
@@ -52,7 +48,7 @@ cfg_master.linposBins = 101; % number of position bins (is autoscaled for each s
 cfg_master.nMinSpikes = 100; % minimum number of spikes needed to include cell
 cfg_master.ccMethod = 'MvdM'; % cell type classification method
 cfg_master.maxPrevCorr = 0.99; % if wv correlation with previous day is bigger than this, cell is possible duplicate
-cfg_master.maxPeakn = 0.1; % if peak wv difference (normalized) with previous day is smaller than this, cell is possible duplicate
+cfg_master.maxPeakn = 0.2; % if peak wv difference (normalized) with previous day is smaller than this, cell is possible duplicate
 cfg_master.iS = []; % current session number out of fd list, get this from input cfg
 cfg_master.fc = []; % full list of session fd's, get this from input cfg
 cfg_master.fc_extra = []; % get this from input cfg

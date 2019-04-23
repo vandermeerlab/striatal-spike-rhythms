@@ -97,30 +97,26 @@ end
 skipCells = 144;
 ALL_avgErr(:, skipCells) = []; ALL_tstat(:, skipCells, :) = []; ALL_ttrErr(:, skipCells, :) = [];
 cellCount = cellCount - length(skipCells);
+cell_keep = 1:cellCount;
 
 %%
 for iM = 1:nModels
     
     figure;
     
-    % average improvement across cells
+    % improvement across cells
     subplot(221);
-    this_err = ALL_avgErr(iM,:);
+    this_err = ALL_avgErr(iM, cell_keep);
     
     errM = nanmean(this_err); errSD = nanstd(this_err);
     errZ = errM ./ errSD;
     p = signrank(this_err);
-    fprintf('dErr %.2e +/- %.2e (z = %.2f), p = %.3e (nCells = %d)\n', errM, errSD, errZ, p, cellCount);
+    fprintf('Model %s dErr %.2e +/- %.2e (z = %.2f), p = %.3e (nCells = %d)\n', cfg.models{iM}, errM, errSD, errZ, p, cellCount);
     
-    plot(this_err,'LineWidth',1); hold on;
-    low_idx = find(this_err > 0); plot(low_idx,this_err(low_idx),'.g','MarkerSize',20);
-    high_idx = find(this_err <= 0); plot(high_idx,this_err(high_idx),'.r','MarkerSize',20);
-    set(gca,'LineWidth',1,'FontSize',18); box off;
-    ylabel('Prediction improvement'); xlabel('cell #');
-    title(cat(2,'Model ', cfg.models{iM}));
-    
-    % histogram of improvement across cells
-    subplot(223);
+    high_idx = find(this_err > 0);
+    low_idx = find(this_err <= 0);
+    fprintf('%d (%.2f %%) cells improved\n', length(high_idx), (length(high_idx) ./ length(cell_keep)) .* 100);
+
     nHistBins = 100; histLims = [-4e-6 1e-5]; 
     histBinEdges = linspace(histLims(1), histLims(2), nHistBins);
     histBinCenters = histBinEdges + median(diff(histBinEdges))/2; histBinCenters = histBinCenters(1:end-1);
@@ -132,40 +128,49 @@ for iM = 1:nModels
     hold on;
     h2 = bar(histBinCenters(high_idx), hData(high_idx)); set(h2, 'FaceColor', 'g', 'EdgeColor', 'none');
     
-    set(gca,'LineWidth',1,'FontSize',18); box off;
+    set(gca,'LineWidth', 1, 'FontSize', 18, 'TickDir', 'out'); box off;
     ylabel('count'); xlabel('prediction improvement');
-    title(cat(2,'Model ', cfg.models{iM}));
-    
+    title(sprintf('Model %s', cfg.models{iM}));
     
     % t-stat across cells
     subplot(222);
     
-    this_tstat = sq(ALL_tstat(iM,:,:));
+    this_tstat = sq(ALL_tstat(iM, cell_keep, :));
     this_vars = ALL_tstat_varnames{iM}; nVars = length(ALL_tstat_varnames{iM});
     this_tstat = this_tstat(1:cellCount-1,1:nVars);
     
     imagesc(this_tstat); colorbar; caxis([0 20]);
     
     trunc = @(x) x(1:2); lbl = cellfun(trunc, this_vars, 'UniformOutput', false);
-    set(gca,'LineWidth',1,'FontSize',12,'XTick',1:nVars,'XTickLabel',lbl); box off;
+    set(gca, 'LineWidth', 1, 'FontSize', 12, 'XTick', 1:nVars, 'XTickLabel', lbl, 'TickDir', 'out'); box off;
     ylabel('cell #');
+    
+    % average t-stats
+    subplot(223);
+    errorbar(1:nVars, nanmean(this_tstat), nanstd(this_tstat), 'k');
+    hold on;
+    plot(nanmean(this_tstat), '.k', 'MarkerSize', 20);
+    set(gca, 'LineWidth', 1, 'FontSize', 18, 'XTick', 1:nVars, 'XTickLabel', lbl, 'TickDir', 'out'); box off;
+    ylabel('mean t-stat');
     
     % t-stat correlations
     subplot(224);
     
     tcorr = corrcoef(this_tstat);
     imagesc(tcorr); colorbar;
-    set(gca,'LineWidth',1,'FontSize',12,'XTick',1:nVars,'XTickLabel',lbl,'YTick',1:nVars,'YTickLabel',lbl); box off;
+    set(gca,'LineWidth',1,'FontSize',12,'XTick',1:nVars,'XTickLabel',lbl,'YTick',1:nVars,'YTickLabel',lbl, 'TickDir', 'out'); box off;
     
     %%%
     figure;
     
-    this_ttr = sq(ALL_ttrErr(iM,:,:));
+    this_ttr = sq(ALL_ttrErr(iM, cell_keep, :));
     xvec = sd.cfg.ttr_bins(1:end-1) + diff(sd.cfg.ttr_bins)/2;
     
-    env_idx = strmatch(cfg.models{iM}(1:2),envnames); % find envelope that shares first letter with model name...
+    env_idx = strmatch(cfg.models{iM}(1:2), envnames); % find envelope that shares first letter with model name...
+
     if length(env_idx) == 1
         this_env = ALL_env.(envnames{env_idx});
+        this_env = this_env(cell_keep, :);
         envname = envnames{env_idx};
     else
         this_env = nan(size(xvec,2));
@@ -173,18 +178,20 @@ for iM = 1:nModels
     end
     
     subplot(221);
-    [ax h1 h2] = plotyy(xvec,nanmean(this_ttr),xvec,nanmean(this_env));
+    [ax h1 h2] = plotyy(xvec, nanmean(this_ttr), xvec, nanmean(this_env));
     hold on;
     set(h1,'LineWidth',2);
-    set(gca,'XTick',-5:5,'LineWidth',1,'FontSize',18,'YLim',[0 3e-6],'YTick',0:1e-6:3e-6); box off;
-    set(ax(2),'FontSize',18,'LineWidth',1);
+    set(gca,'XTick',-5:5,'LineWidth',1,'FontSize',18,'YLim',[0 3e-6],'YTick',0:1e-6:3e-6, 'TickDir', 'out'); box off;
+    set(ax(2),'FontSize',18,'LineWidth',1,'YTick',[]);
+
     ylabel('Prediction improvement'); xlabel('time from reward (s)');
     
-    title(cat(2,'Model ', cfg.models{iM}, ' env ', envname));
-   
+    title(sprintf('Model %s, env %s', cfg.models{iM}, envname));
+    
     subplot(223);
     imagesc(xvec, 1:cellCount - 1, this_ttr(1:cellCount - 1,:));
-    set(gca,'LineWidth',1,'XTick',-5:5,'FontSize',18); xlabel('time from reward (s)'); ylabel('cell#'); box off;
+    set(gca,'LineWidth', 1, 'XTick', -5:5, 'FontSize', 18, 'TickDir', 'out'); 
+    xlabel('time from reward (s)'); ylabel('cell#'); box off;
     
     % normalize within each cell first, then average
     this_ttr = normalizeM(this_ttr);
@@ -194,23 +201,14 @@ for iM = 1:nModels
     [ax h1 h2] = plotyy(xvec,nanmean(this_ttr),xvec,nanmean(this_env));
     hold on;
     set(h1,'LineWidth',2);
-    set(gca,'XTick',-5:5,'LineWidth',1,'FontSize',18); box off;
-    set(ax(2),'FontSize',18,'LineWidth',1);
+    set(gca,'XTick', -5:5, 'LineWidth', 1, 'FontSize',18, 'TickDir', 'out'); box off;
+    set(ax(2), 'FontSize', 18,'LineWidth', 1, 'TickDir', 'out');
     ylabel('Prediction improvement'); xlabel('time from reward (s)');
     
-    title(cat(2,'Model ', cfg.models{iM}, ' env ', envname));
-   
+    title(sprintf('Model %s (%s), env %s', cfg.models{iM}, cellTypes{iC}, envname));
+    
     subplot(224);
     imagesc(xvec, 1:cellCount - 1, this_ttr(1:cellCount - 1,:));
     set(gca,'LineWidth',1,'XTick',-5:5,'FontSize',18); xlabel('time from reward (s)'); ylabel('cell#'); box off;
-    
-    %
-    %this_space = sq(ALL_spaceErr(iM,:,:));
-    %
-    %subplot(222);
-    %plot(nanmean(this_space));
-    %
-    %subplot(224);
-    %imagesc(this_space(1:cellCount - 1,:));
     
 end
