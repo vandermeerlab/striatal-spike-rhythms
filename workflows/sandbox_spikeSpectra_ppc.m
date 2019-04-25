@@ -3,18 +3,20 @@
 % - add SFC and/or PPC
 % - use alternate LFP if tt is same as LFP
 
-% remember to set path
 clear
+restoredefaultpath;
+addpath(genpath('D:\My_Documents\GitHub\striatal-spike-rhythms\shared'));
+addpath(genpath('D:\My_Documents\GitHub\striatal-spike-rhythms\chronux_2_12\spectral_analysis'));
 
 % set default interpreter to non-LaTeX
 
 cfg_master = [];
 cfg_master.maxPrevCorr = 0.99; % if wv correlation with previous day is bigger than this, cell is possible duplicate
-cfg_master.maxPeakn = 0.1; % if peak wv difference (normalized) with previous day is smaller than this, cell is possible duplicate
+cfg_master.maxPeakn = 0.2; % if peak wv difference (normalized) with previous day is smaller than this, cell is possible duplicate
 cfg_master.ccMethod = 'MvdM'; % method used for cell classification (see also 'Sirota')
 cfg_master.minSpikes = 100; % only keep cells with at least this many spikes
 cfg_master.plot = 0; % produce output figure for each cell?
-cfg_master.nShuf = 25; % number of spike shuffles
+cfg_master.nShuf = 2; % number of spike shuffles
 cfg_master.trial_len = 50; % length (s) of trials to chop data up into
 cfg_master.rats = {'R117', 'R119', 'R131', 'R132'};
 
@@ -24,7 +26,7 @@ cfg_master.rats = {'R117', 'R119', 'R131', 'R132'};
 cc = 1; % cell count
 
 %%
-for iS = 1:length(fd)
+for iS = 4:length(fd)
 
     fprintf('Entering session %d/%d...\n',iS,length(fd));
     cd(fd{iS});
@@ -44,8 +46,24 @@ for iS = 1:length(fd)
     lfp_tt = regexp(cfg.fc, 'CSC\d+', 'match');
     lfp_tt = str2double(lfp_tt{1}{1}(4:end)); % need this to skip cells from same tt (could make into function)
     fprintf('LFP ttno is %d\n', lfp_tt);
+    
+    %% load ft format data
+    prev_path = set_ft_path;
+    ft_lfp = ft_read_neuralynx_interp(ExpKeys.goodGamma_vStr);
+    
+    % restrict to on-task data only
+    t0 = double((ft_lfp.hdr.FirstTimeStamp ./ ft_lfp.hdr.TimeStampPerSample)) / ft_lfp.hdr.Fs; % time of first sample in ft data
+    t1 = ExpKeys.TimeOnTrack - t0; t2 = ExpKeys.TimeOffTrack - t0;
+    cfg_trl = []; cfg_trl.latency = [t1 t2];
+    ft_lfp = ft_selectdata(cfg_trl, ft_lfp);
+    
+    nan_idx = find(isnan(ft_lfp.trial{1}));
+    ft_lfp.trial{1}(nan_idx) = 0;
+    fprintf('  %d NaNs replaced in ft LFP.\n', length(nan_idx));
 
-    %% load data
+    path(prev_path);
+    
+    %% load spike data
     cfg = []; cfg.uint = '32';
     S = LoadSpikes(cfg);
     S = restrict(S, ExpKeys.TimeOnTrack, ExpKeys.TimeOffTrack);
@@ -109,15 +127,14 @@ for iS = 1:length(fd)
        end
     end
 
-    %% Updated version with spike spectrum and STA
     % parameters for spike spectrum
-    cfg = []; cfg.binsize = 0.001; cfg.Fs = 1 ./ cfg.binsize;
-    cfg.nShuf = cfg_master.nShuf; cfg.trial_len = cfg_master.trial_len;
+    cfg_ss = []; cfg_ss.binsize = 0.001; cfg_ss.Fs = 1 ./ cfg_ss.binsize;
+    cfg_ss.nShuf = cfg_master.nShuf; cfg_ss.trial_len = cfg_master.trial_len;
     
-    cfg.params = []; cfg.params.Fs = 200; cfg.params.tapers = [3 5];
+    cfg_ss.params = []; cfg_ss.params.Fs = 200; cfg_ss.params.tapers = [3 5];
     
-    tbin_edges = firstSpike(S):cfg.binsize:lastSpike(S);
-    trial_starts = tbin_edges(1):cfg.trial_len:tbin_edges(end);
+    tbin_edges = firstSpike(S):cfg_ss.binsize:lastSpike(S);
+    trial_starts = tbin_edges(1):cfg_ss.trial_len:tbin_edges(end);
     
     for iC = length(S.t):-1:1
         
@@ -139,11 +156,11 @@ for iS = 1:length(fd)
         
         % binarize spike train for acorr (display only)
         spk_binned = histc(spk_t, tbin_edges); spk_binned = spk_binned(1:end-1);
-        [acf, tvec] = ComputeACF(cfg, spk_binned);
+        [acf, tvec] = ComputeACF(cfg_ss, spk_binned);
         
         if cfg_master.plot
             figure; subplot(221);
-            plot(tvec,acf); xlim([-0.5 0.5]);
+            plot(tvec, acf); xlim([-0.5 0.5]);
             title(sprintf('Cell %s', ALL_cellLabel{cc}));
         end
         
@@ -151,11 +168,11 @@ for iS = 1:length(fd)
         clear data;
         for iT = 1:length(trial_starts) % this bit should be made into a function
             this_spk = spk_t - trial_starts(iT);
-            keep = this_spk >= 0 & this_spk < cfg.trial_len;
+            keep = this_spk >= 0 & this_spk < cfg_ss.trial_len;
             data(iT).times = this_spk(keep);
         end
         
-        [P,F,R] = mtspectrumpt(data, cfg.params);
+        [P,F,R] = mtspectrumpt(data, cfg_ss.params);
         P = nanmean(P, 2) ./ length(spk_t);
         keep = F > 1;
         P = 10*log10(P(keep)); F = F(keep);
@@ -183,7 +200,7 @@ for iS = 1:length(fd)
         
         % shuffles for spike spectrum
         clear this_shufP;
-        for iShuf = cfg_master.nShuf:-1:1
+        for iShuf = cfg_ss.nShuf:-1:1
             
             % shuffle spike train
             spk_shuf = rand(length(spk_t), 1);
@@ -193,11 +210,11 @@ for iS = 1:length(fd)
             clear data;
             for iT = 1:length(trial_starts) % this bit should be made into a function
                 this_spk = spk_shuf - trial_starts(iT);
-                keep = this_spk >= 0 & this_spk < cfg.trial_len;
+                keep = this_spk >= 0 & this_spk < cfg_ss.trial_len;
                 data(iT).times = this_spk(keep);
             end
             
-            [P,F,R] = mtspectrumpt(data, cfg.params);
+            [P,F,R] = mtspectrumpt(data, cfg_ss.params);
             P = nanmean(P, 2) ./ length(spk_shuf);
             keep = F > 1;
             P = 10*log10(P(keep)); F = F(keep);
@@ -233,7 +250,7 @@ for iS = 1:length(fd)
         
         % STA spectrum
         this_Fs = 1 ./ median(diff(csc.tvec));
-        [P,F] = pwelch(xc,length(xc), [], [], this_Fs);
+        [P,F] = pwelch(xc, length(xc), [], [], this_Fs);
         
         if cfg_master.plot
             subplot(224);
@@ -245,7 +262,7 @@ for iS = 1:length(fd)
         
         % do STA shuffles
         clear this_shufSTA this_shufSTAp;
-        for iShuf = cfg.nShuf:-1:1
+        for iShuf = cfg_ss.nShuf:-1:1
             spk_binned_shuf = this_spk_binned(randperm(length(this_spk_binned)));
             this_shufSTA(iShuf,:) = xcorr(csc.data, spk_binned_shuf,1000);
             this_shufSTAp(iShuf,:) = pwelch(this_shufSTA(iShuf,:), length(this_shufSTA(iShuf,:)), [], [], this_Fs);
@@ -265,6 +282,44 @@ for iS = 1:length(fd)
             plot(F,10*log10(ALL.STAp_shufmean(cc,:) - 2*ALL.STAp_shufSD(cc,:)), 'r:');
             
             drawnow;
+        end
+        
+        % ppc
+        prev_path = set_ft_path;
+        
+        spike = ft_read_spike(S.label{iC}); % needs fixed read_mclust_t.m (edited D:\My_Documents\GitHub\fieldtrip\fileio\private\read_mclust_t.m to uint32)
+        
+        cfg           = [];
+        cfg.hdr       = ft_lfp.hdr; % contains information for conversion of samples to timestamps
+        cfg.trlunit   = 'samples';
+        cfg.trl       = [ft_lfp.sampleinfo(1) ft_lfp.sampleinfo(2) ft_lfp.sampleinfo(1)]; % now in samples
+        spike_trl     = ft_spike_maketrials(cfg, spike);
+        
+        % spike triggered spectrum (nice convolution method)
+        cfg              = [];
+        cfg.method       = 'mtmconvol';
+        cfg.foi          = 1:100;
+        cfg.t_ftimwin    = 5./cfg.foi; % 5 cycles per frequency
+        cfg.taper        = 'hanning';
+        cfg.channel      = ft_lfp.label(1);
+        cfg.rejectsaturation = 'no';
+        stsConvol        = ft_spiketriggeredspectrum(cfg, ft_lfp, spike_trl);
+        
+        % compute the statistics on the phases
+        cfg               = [];
+        cfg.method        = 'ppc0'; % compute the Pairwise Phase Consistency
+        cfg.avgoverchan   = 'unweighted'; % weight spike-LFP phases irrespective of LFP power
+        cfg.timwin        = 'all'; % compute over all available spikes in the window
+        %statSts           = ft_spiketriggeredspectrum_stat(cfg, stsFFT);
+        statSts           = ft_spiketriggeredspectrum_stat(cfg, stsConvol);
+        
+        path(prev_path);
+        
+        ALL.ppc(cc,:) = statSts.ppc0';
+        ALL.ppc_freq = statSts.freq;
+        
+        if any(isnan(ALL.ppc(cc,:)))
+           error('PPC failed!'); 
         end
         
         cc = cc + 1; % advance cell count
@@ -377,12 +432,25 @@ keep = pval_raw < 0.05;
 hold on; plot(xval(keep),cc_raw(keep),'.b','MarkerSize',20);
 
 %%
-function [acf,tvec] = ComputeACF(cfg,spk_binned)
+function [acf,tvec] = ComputeACF(cfg, spk_binned)
 if isfield(cfg,'maxlag')
-    [acf,tvec] = xcorr(spk_binned,spk_binned,cfg.maxlag);
+    [acf,tvec] = xcorr(spk_binned, spk_binned, cfg.maxlag);
 else
-    [acf,tvec] = xcorr(spk_binned,spk_binned);
+    [acf,tvec] = xcorr(spk_binned, spk_binned);
 end
-tvec = tvec.*cfg.binsize;
+tvec = tvec .* cfg.binsize;
 acf(ceil(length(acf)/2)) = 0;
+end
+
+%%
+function prev_path = set_ft_path()
+% set path for FieldTrip
+
+prev_path = path;
+
+restoredefaultpath;
+addpath('D:\My_Documents\GitHub\fieldtrip'); ft_defaults
+addpath('D:\My_Documents\GitHub\striatal-spike-rhythms\shared\io\ft');
+addpath('D:\My_Documents\GitHub\striatal-spike-rhythms\shared\io\neuralynx');
+
 end

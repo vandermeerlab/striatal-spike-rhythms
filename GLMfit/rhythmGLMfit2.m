@@ -1,5 +1,7 @@
-function sd = rhythmGLMfit(cfg_in)
+function sd = rhythmGLMfit2(cfg_in)
 % GLM for spike prediction with LFP features
+%
+% as rhythmGLMfit, but add exclusion of duplicate cells
 %
 % This top-level function fits a number of GLMs to single session spike train data.
 %
@@ -12,7 +14,7 @@ function sd = rhythmGLMfit(cfg_in)
 % - prepare session-wide variables (linearized position, LFP features,
 %   speed etc) on common timebase ('TVECc')
 % - for each cell:
-%   * prepare regressors for this cell
+%   * prepare regressors for this ell
 %   - for each cross-validation run ("pleat"; a set of folds) and fold:
 %     + fit models on training data
 %     + test models
@@ -20,12 +22,6 @@ function sd = rhythmGLMfit(cfg_in)
 % - for each model:
 %   * plot error across cells
 %   * plot error across time to reward (tuning curve)
-%
-% output error is stored in the sd variable, which can be saved for a later
-% collector to aggregate across sessions.
-%
-% maybe storing errors is overkill though: too much space, could store
-% tuning curves for various things instead
 %
 % run this with data session to analyze as the working folder.
 %
@@ -50,18 +46,79 @@ cfg_master.output_dir = 'C:\temp';
 cfg_master.ttr_bins = [-5:0.1:5]; % time bin edges for time-to-reward tuning curves
 cfg_master.linposBins = 101; % number of position bins (is autoscaled for each session)
 cfg_master.nMinSpikes = 100; % minimum number of spikes needed to include cell
+cfg_master.ccMethod = 'MvdM'; % cell type classification method
+cfg_master.maxPrevCorr = 0.99; % if wv correlation with previous day is bigger than this, cell is possible duplicate
+cfg_master.maxPeakn = 0.2; % if peak wv difference (normalized) with previous day is smaller than this, cell is possible duplicate
+cfg_master.iS = []; % current session number out of fd list, get this from input cfg
+cfg_master.fc = []; % full list of session fd's, get this from input cfg
+cfg_master.fc_extra = []; % get this from input cfg
 
 cfg_master = ProcessConfig(cfg_master,cfg_in);
 
 %% loading
 % load data
-%cd('C:\data\adrlab\R117-2007-06-20');
-%cd('D:\data\adrlab\R132\R132-2007-10-20');
 LoadExpKeys;
 
 % spikes
 sd.S = LoadSpikesTarget(cfg_master);
+nSpikes = cellfun(@length, sd.S.t); keep = nSpikes >= cfg_master.nMinSpikes;
+sd.S = SelectTS([], sd.S, keep);
 nCells = length(sd.S.t); if nCells == 0, sd = []; return; end
+
+%% Categorize cells and add tetrode depths
+cfg_wv = []; cfg_wv.cMethod = cfg_master.ccMethod;
+s_out = CategorizeStriatumWave(cfg_wv, sd.S);
+
+s_out.unit = [s_out.other s_out.msn s_out.fsi];
+s_out.ident = [zeros(1, length(s_out.other)) ones(1, length(s_out.msn)) repmat(2, 1, length(s_out.fsi))];
+
+cfg_tt = []; cfg_tt.verbose = 1;
+cfg_tt.this_rat_ID = cfg_master.fd_extra.ratID_num(cfg_master.iS);
+cfg_tt.this_date = cfg_master.fd_extra.fd_date_num(cfg_master.iS);
+
+for iC = 1:length(sd.S.t)
+    sd.S.usr.cell_type(iC) = s_out.ident(find(s_out.unit == iC));
+    sd.S.usr.tetrodeDepths(iC) = ExpKeys.TetrodeDepths(sd.S.usr.tt_num(iC));
+    
+    cfg_tt.ttno = sd.S.usr.tt_num(iC);
+    [sd.S.usr.distanceTurned(iC), prev_fd] = DistanceTurned(cfg_tt, cfg_master.fd, cfg_master.fd_extra);
+    cfg_tt.verbose = 0;
+end
+
+% correlate with previous session waveforms if available
+if isempty(prev_fd) % no previous day available
+    sd.S.usr.duplicate = zeros(size(sd.S.usr.tt_num));
+else
+    pushdir(prev_fd);
+    S2 = LoadSpikes([]);
+    nSpikes = cellfun(@length, S2.t); keep = nSpikes >= cfg_master.nMinSpikes;
+    S2 = SelectTS([], S2, keep);
+    
+    s_out2 = CategorizeStriatumWave(cfg_wv, S2);
+    s_out = CalcWVDistances([], s_out, s_out2); % add comparison with previous day's waveforms
+    
+    popdir;
+    
+    % for each cell in current session, decide if duplicate
+    for iC = 1:length(sd.S.t)
+        
+        this_tt_no = sd.S.usr.tt_num(iC);
+        prev_day_cells = find(S2.usr.tt_num == this_tt_no);
+        
+        if isempty(prev_day_cells) % no cells recorded fron this tt in previous session
+            sd.S.usr.duplicate(iC) = 0;
+        else % previous day cells found
+            temp_corr = s_out.corr(iC, prev_day_cells);
+            temp_peakn = s_out.peakdiffn(iC, prev_day_cells);
+            
+            if temp_corr > cfg_master.maxPrevCorr & abs(temp_peakn) < cfg_master.maxPeakn % wv correlation big, peak difference small
+                sd.S.usr.duplicate(iC) = 1;
+            else
+                sd.S.usr.duplicate(iC) = 0;
+            end
+        end
+    end
+end % of previous day available checks
 
 % LFP - vStr
 if isfield(ExpKeys,'goodGamma_vStr')
@@ -73,23 +130,9 @@ else
 end
 csc = LoadCSC(cfg);
 
-% LFP - HC
-if isfield(ExpKeys,'goodTheta')
-    if iscell(ExpKeys.goodTheta)
-        cfg = []; cfg.fc = ExpKeys.goodTheta(1);
-    else
-        cfg = []; cfg.fc = {ExpKeys.goodTheta};
-    end
-else
-    error('Don''t know what HC LFP to load.');
-end
-csc_hc = LoadCSC(cfg);
-
-% deal with strange possibility that LFPs are different lengths
-if length(csc_hc.tvec) ~= length(csc.tvec)
-    csc_hc.data = interp1(csc_hc.tvec, csc_hc.data, csc.tvec, 'linear'); csc_hc.tvec = csc.tvec; 
-    disp('Corrected different LFP lengths.');
-end
+lfp_tt = regexp(cfg.fc, 'CSC\d+', 'match');
+lfp_tt = str2double(lfp_tt{1}{1}(4:end)); % need this to skip cells from same tt (could make into function)
+fprintf('LFP ttno is %d\n', lfp_tt);
 
 cfg_phi = []; % LFP features
 cfg_phi.dt = median(diff(csc.tvec));
@@ -105,31 +148,8 @@ end
 pos = LoadPos([]);
 
 % reward deliveries
-evt = LoadEvents([]);
-keep = ~cellfun('isempty',evt.label); evt = SelectTS([],evt,keep);
-if isfield(ExpKeys,'FeederL1') % feeder IDs defined, use them
-    
-    feeders = cat(2, ExpKeys.FeederL1, ExpKeys.FeederR1);
-    reward_t = [];
-    ll = @(x) x(end); % function to get last character of input
-    for iF = 1:length(feeders)
-        
-        keep_idx = find(num2str(feeders(iF)) == cellfun(ll, evt.label));
-        reward_t = cat(1, reward_t, evt.t{keep_idx});
-        
-    end
-    reward_t = sort(reward_t);
-else
-    reward_t = evt.t{1};
-end
-fprintf('%d trials detected.\n', length(reward_t));
-
-if length(reward_t) < 20
-   disp('*** SESSION SKIPPED DUE TO INSUFFICIENT TRIALS ***');
-   return;
-end
-
-% TODO: remove double labels!
+reward_t = getRewardTimes;
+fprintf('%d trials found.\n', length(reward_t));
 
 %% initialize variables
 % overall plan:
@@ -163,22 +183,28 @@ sd.TVECc = sd.TVECc(MASTER_keep);
 
 nMaxVars = 15; % only used for initializing t-stat matrix
 % baseline model MUST be defined first or things will break!
-sd.m.baseline.modelspec = 'spk ~ 1 + linpos + spd + ttr + cif + delta_phase + beta_phase + theta_phase + lowGamma_phase + highGamma_phase';
-sd.m.hctheta.modelspec = 'spk ~ 1 + linpos + spd + ttr + cif + delta_phase + beta_phase + theta_phase + lowGamma_phase + highGamma_phase + hctheta_phase';
+sd.m.baseline.modelspec = 'spk ~ 1 + linpos + spd + ttr + cif';
+sd.m.dphi.modelspec = 'spk ~ 1 + linpos + spd + ttr + cif + delta_phase';
+sd.m.tphi.modelspec = 'spk ~ 1 + linpos + spd + ttr + cif + theta_phase';
+sd.m.bphi.modelspec = 'spk ~ 1 + linpos + spd + ttr + cif + beta_phase';
+sd.m.lgphi.modelspec = 'spk ~ 1 + linpos + spd + ttr + cif + lowGamma_phase';
+sd.m.hgphi.modelspec = 'spk ~ 1 + linpos + spd + ttr + cif + highGamma_phase';
+sd.m.allphi.modelspec = 'spk ~ 1 + linpos + spd + ttr + cif + delta_phase + beta_phase + theta_phase + lowGamma_phase + highGamma_phase';
+%sd.m.all.modelspec = 'spk ~ 1 + linpos + spd + ttr + cif + delta_phase + beta_phase + theta_phase + lowGamma_phase + highGamma_phase + delta_env + beta_env + theta_env + lowGamma_env + highGamma_env';
 
-% init error vars
-mn = fieldnames(sd.m);
-for iM = 1:length(mn)
-   sd.m.(mn{iM}).err = zeros(nCells, length(sd.TVECc)); % needs to be zeros because error output will be added to this
-   sd.m.(mn{iM}).tstat = nan(nCells, nMaxVars);
-end
+% init error vars -- now done for each cell
+%mn = fieldnames(sd.m);
+%for iM = 1:length(mn)
+%   sd.m.(mn{iM}).err = zeros(nCells, length(sd.TVECc)); % needs to be zeros because error output will be added to this
+%   sd.m.(mn{iM}).tstat = nan(nCells, nMaxVars);
+%end
 
 % define training and testing sets
 for iPleat = cfg_master.nPleats:-1:1
     C{iPleat} = cvpartition(length(sd.TVECc), 'KFold', cfg_master.kFold);
 end
 
-% LFP features - vStr
+% LFP features
 disp('Computing session-wide LFP features...');
 fb_names = fieldnames(cfg_master.f);
 cfg_phi.debug = 0;
@@ -191,11 +217,6 @@ for iF = 1:length(fb_names)
     
 end
 
-% LFP features - HC
-cfg_phi.fpass = cfg_master.f.theta;
-[FF.hctheta.phase, FF.hctheta.env] = ComputePhase(cfg_phi, csc_hc);
-fb_names = cat(1, fb_names, {'hctheta'});
-
 %
 spd = getLinSpd([],pos);
 
@@ -206,10 +227,22 @@ linpos = ComputeLinPos(pos);
 p.time = sd.TVECc';
 
 %% loop over all cells 
-cellCount = 0;
+cc = 1;
 for iC = nCells:-1:1
 
     fprintf('Cell %d/%d...\n',iC,nCells);
+    
+    % skip if not turned & correlated with prev session
+    if sd.S.usr.duplicate(iC) & sd.S.usr.distanceTurned(iC) < 80
+        fprintf('Cell skipped - likely duplicate.\n');
+        continue;
+    end
+    
+    % skip if on same tt as LFP
+    if sd.S.usr.tt_num(iC) == lfp_tt
+        fprintf('Cell skipped - same TT as LFP.\n');
+        continue;
+    end
     
     % dependent variable: binned spike train
     spk_binned = histc(sd.S.t{iC}, TVECe); spk_binned = spk_binned(1:end - 1);
@@ -247,6 +280,13 @@ for iC = nCells:-1:1
        continue;
     end
     
+    %%% INCLUDE SOME INFO ABOUT THIS CELL
+    sd.cellType(cc) = sd.S.usr.cell_type(iC);
+    sd.cellLabel{cc} = sd.S.label(iC);
+    sd.cellDepth(cc) = sd.S.usr.tetrodeDepths(iC);
+    sd.cellID(cc) = s_out.cq.id(iC); sd.cellLr(cc) = s_out.cq.lr(iC); sd.cellAmpl(cc) = s_out.cq.ampl(iC);
+         
+    
     %%% PREDICTOR: time to reward
     [ttr, lambda_ttr, ttr_binned] = MakeTC_1D(cfg_ttr, sd.TVECc, t_to_reward, sd.TVECc, spk_binned);
     p.ttr = ttr' - nanmean(ttr);
@@ -279,6 +319,12 @@ for iC = nCells:-1:1
         end
     end
     
+    % init model vars
+    mn = fieldnames(sd.m);
+    for iM = 1:length(mn)
+       sd.m.(mn{iM}).err(cc, :) = zeros(1, length(sd.TVECc)); % needs to be zeros because error output will be added to this
+       sd.m.(mn{iM}).tstat(cc, :) = nan(1, nMaxVars);
+    end
 
     %% x-val loop
     p.spk = spk_binned;
@@ -297,7 +343,7 @@ for iC = nCells:-1:1
                 
                 % train initial model
                 this_m = fitglm(p(tr_idx,:), sd.m.(mn{iModel}).modelspec, 'Distribution', 'binomial')
-                sd.m.(mn{iModel}).tstat(iC, 1:length(this_m.Coefficients.tStat)) = this_m.Coefficients.tStat; % should initialize this, but that's a pain
+                sd.m.(mn{iModel}).tstat(cc, 1:length(this_m.Coefficients.tStat)) = this_m.Coefficients.tStat; % should initialize this, but that's a pain
                 sd.m.(mn{iModel}).varnames = this_m.PredictorNames;
                 
                 % refine model by throwing out ineffective predictors
@@ -311,7 +357,7 @@ for iC = nCells:-1:1
                 % test it and add resulting error to running total
                 this_err = this_m.predict(p(te_idx,:));
                 this_err = (this_err - spk_binned(te_idx)).^2;
-                sd.m.(mn{iModel}).err(iC,te_idx) = sd.m.(mn{iModel}).err(iC,te_idx) + (this_err ./ cfg_master.nPleats)';
+                sd.m.(mn{iModel}).err(cc, te_idx) = sd.m.(mn{iModel}).err(cc, te_idx) + (this_err ./ cfg_master.nPleats)';
                 
             end % across models
             
@@ -319,10 +365,11 @@ for iC = nCells:-1:1
         
     end % over pleats
     
-    cellCount = cellCount + 1;
+    cc = cc + 1;
 end % over cells
+cc = cc - 1;
 
-if cellCount == 0
+if cc == 0
     return;
 end
 
@@ -392,7 +439,7 @@ if cfg_master.writeOutput
         % get error diff for this model
         this_err = sd.m.baseline.err - sd.m.(mn{iM}).err;
         
-        for iC = nCells:-1:1
+        for iC = cc:-1:1
             
             % smooth
             this_cell_err = this_err(iC,:);

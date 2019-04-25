@@ -50,18 +50,77 @@ cfg_master.output_dir = 'C:\temp';
 cfg_master.ttr_bins = [-5:0.1:5]; % time bin edges for time-to-reward tuning curves
 cfg_master.linposBins = 101; % number of position bins (is autoscaled for each session)
 cfg_master.nMinSpikes = 100; % minimum number of spikes needed to include cell
+cfg_master.ccMethod = 'MvdM'; % cell type classification method
+cfg_master.maxPrevCorr = 0.99; % if wv correlation with previous day is bigger than this, cell is possible duplicate
+cfg_master.maxPeakn = 0.1; % if peak wv difference (normalized) with previous day is smaller than this, cell is possible duplicate
+cfg_master.iS = []; % current session number out of fd list, get this from input cfg
+cfg_master.fc = []; % full list of session fd's, get this from input cfg
+cfg_master.fc_extra = []; % get this from input cfg
 
 cfg_master = ProcessConfig(cfg_master,cfg_in);
 
 %% loading
 % load data
-%cd('C:\data\adrlab\R117-2007-06-20');
-%cd('D:\data\adrlab\R132\R132-2007-10-20');
 LoadExpKeys;
 
 % spikes
 sd.S = LoadSpikesTarget(cfg_master);
 nCells = length(sd.S.t); if nCells == 0, sd = []; return; end
+
+%% Categorize cells and add tetrode depths
+cfg_wv = []; cfg_wv.cMethod = cfg_master.ccMethod;
+s_out = CategorizeStriatumWave(cfg_wv, S);
+
+s_out.unit = [s_out.other s_out.msn s_out.fsi];
+s_out.ident = [zeros(1, length(s_out.other)) ones(1, length(s_out.msn)) repmat(2, 1, length(s_out.fsi))];
+
+cfg_tt = []; cfg_tt.verbose = 1;
+cfg_tt.this_rat_ID = cfg_master.fd_extra.ratID_num(cfg_master.iS);
+cfg_tt.this_date = cfg_master.fd_extra.fd_date_num(cfg_master.iS);
+
+for iC = 1:length(S.t)
+    S.usr.cell_type(iC) = s_out.ident(find(s_out.unit == iC));
+    S.usr.tetrodeDepths(iC) = ExpKeys.TetrodeDepths(S.usr.tt_num(iC));
+    
+    cfg_tt.ttno = S.usr.tt_num(iC);
+    [S.usr.distanceTurned(iC), prev_fd] = DistanceTurned(cfg_tt, fd, fd_extra);
+    cfg_tt.verbose = 0;
+end
+
+% correlate with previous session waveforms if available
+if isempty(prev_fd) % no previous day available
+    S.usr.duplicate = zeros(size(S.usr.tt_num));
+else
+    pushdir(prev_fd);
+    S2 = LoadSpikes([]);
+    nSpikes = cellfun(@length, S2.t); keep = nSpikes >= cfg_master.minSpikes;
+    S2 = SelectTS([], S2, keep);
+    
+    s_out2 = CategorizeStriatumWave(cfg_wv, S2);
+    s_out = CalcWVDistances([], s_out, s_out2); % add comparison with previous day's waveforms
+    
+    popdir;
+    
+    % for each cell in current session, decide if duplicate
+    for iC = 1:length(S.t)
+        
+        this_tt_no = S.usr.tt_num(iC);
+        prev_day_cells = find(S2.usr.tt_num == this_tt_no);
+        
+        if isempty(prev_day_cells) % no cells recorded fron this tt in previous session
+            S.usr.duplicate(iC) = 0;
+        else % previous day cells found
+            temp_corr = s_out.corr(iC, prev_day_cells);
+            temp_peakn = s_out.peakdiffn(iC, prev_day_cells);
+            
+            if temp_corr > cfg_master.maxPrevCorr & abs(temp_peakn) < cfg_master.maxPeakn % wv correlation big, peak difference small
+                S.usr.duplicate(iC) = 1;
+            else
+                S.usr.duplicate(iC) = 0;
+            end
+        end
+    end
+end % of previous day available checks
 
 % LFP - vStr
 if isfield(ExpKeys,'goodGamma_vStr')
@@ -72,6 +131,10 @@ else
     error('Don''t know what LFP to load.');
 end
 csc = LoadCSC(cfg);
+
+lfp_tt = regexp(cfg.fc, 'CSC\d+', 'match');
+lfp_tt = str2double(lfp_tt{1}{1}(4:end)); % need this to skip cells from same tt (could make into function)
+fprintf('LFP ttno is %d\n', lfp_tt);
 
 cfg_phi = []; % LFP features
 cfg_phi.dt = median(diff(csc.tvec));
@@ -186,6 +249,9 @@ cellCount = 0;
 for iC = nCells:-1:1
 
     fprintf('Cell %d/%d...\n',iC,nCells);
+    
+    % figure out if we should include this cell
+    
     
     % dependent variable: binned spike train
     spk_binned = histc(sd.S.t{iC}, TVECe); spk_binned = spk_binned(1:end - 1);
